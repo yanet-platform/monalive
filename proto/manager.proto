@@ -1,0 +1,157 @@
+syntax = "proto3";
+
+package monalive;
+
+import "google/api/annotations.proto"; 
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "monalive/proto;monalivepb";
+
+// Define the MonaliveManager service with two RPC methods: Reload and
+// GetStatus.
+service MonaliveManager {
+
+  // RPC method to reload the services configuration. The method takes a
+  // ReloadRequest message and returns a ReloadResponse message. 
+  // 
+  // It is mapped to an HTTP POST request at the "/v1/reload" endpoint.
+  rpc Reload(ReloadRequest) returns (ReloadResponse) {
+    option (google.api.http) = {
+        post: "/v1/reload"
+        body: "*"
+      };
+  }
+  
+  // RPC method to get the current status of the service. The method takes a
+  // GetStatusRequest message and returns a GetStatusResponse message.
+  // 
+  // It is mapped to an HTTP GET request at the "/v1/status" endpoint.
+  rpc GetStatus(GetStatusRequest) returns (GetStatusResponse) {
+    option (google.api.http) = {
+      get: "/v1/status"
+    };
+  }
+}
+
+// ReloadRequest message used in the Reload RPC method.
+// 
+// Currently empty, but designed to allow future extensions without breaking
+// backward compatibility.
+message ReloadRequest {}
+
+// ReloadResponse message returned by the Reload RPC method.
+//
+// Currently empty, but designed to allow future extensions without breaking
+// backward compatibility.
+message ReloadResponse {}
+
+// GetStatusRequest message used in the GetStatus RPC method.
+//
+// Currently empty, but designed to allow future extensions without breaking
+// backward compatibility.
+message GetStatusRequest {}
+
+// GetStatusRequest message representing the overall status of the Monalive service.
+message GetStatusResponse {
+  // Timestamp of the last reload update.
+  google.protobuf.Timestamp update_timestamp = 1;
+  // List of status information for each service being monitored.
+  repeated ServiceStatus status = 2;
+}
+
+// ServiceStatus message representing the status of a virtual server.
+message ServiceStatus {
+  // Virtual IP address of the service.
+  string vip = 1;
+  // Optional port number of the service.
+  optional uint32 port = 2;
+  // Protocol used by the service (e.g., TCP, UDP).
+  string protocol = 3;
+  // Load balancing method used (e.g., IPIP, GRE).
+  string lvs_method = 4;
+  // Current quorum state of the service.
+  int32 quorum_state = 5;
+  // Number of alive real servers in the service.
+  uint32 alive_count = 6;
+  // Total weight of alive real servers.
+  uint32 alive_weight = 7;
+  // Number of state transitions.
+  uint32 transitions = 8;
+  // Firewall mark associated with the service.
+  uint32 fwmark = 9;
+  // Optional announce group for the service host prefix.
+  optional string announce_group = 10;
+  // IPv4 outer source network for the service.
+  string ipv4_outer_source_network = 11;
+  // IPv6 outer source network for the service.
+  string ipv6_outer_source_network = 12;
+  // List of real server statuses associated with the service.
+  repeated RealStatus rs = 13;
+}
+
+// RealStatus message representing the status of a real server.
+message RealStatus {
+  // IP address of the real server.
+  string ip = 1;
+  // Optional port number of the real server.
+  optional uint32 port = 2;
+  // Whether the real server is currently alive.
+  bool alive = 3;
+  // Weight assigned to the real server.
+  uint32 weight = 4;
+  // Number of state transitions for the real server.
+  uint32 transitions = 5;
+  // List of checker statuses associated with the real server.
+  repeated CheckerStatus checkers = 6;
+}
+
+// CheckerStatus message representing the status of a health checker for a real
+// server.
+message CheckerStatus {
+  // Type of health checker (e.g., HTTP, TCP).
+  string type = 1;
+  
+  // IP address used for connecting to the server.
+  string connect_ip = 2;
+  // Optional port number used for connecting to the server.
+  optional uint32 connect_port = 3;
+  // IP address used for binding the connection.
+  string bind_ip = 4;
+  // Timeout duration for establishing a connection.
+  google.protobuf.Duration connect_timeout = 5;
+  // Timeout duration for performing a health check.
+  google.protobuf.Duration check_timeout = 6;
+  // Firewall mark used during the health check.
+  uint32 fwmark = 7;
+  
+  // Path used for HTTP health checks.
+  string path = 8;
+  // Expected status code for HTTP health checks.
+  int32 status_code = 9;
+  // Expected digest for content verification.
+  string digest = 10;
+  // Optional virtual host used in HTTP/GRPC health checks.
+  optional string virtualhost = 11;
+  
+  // Whether dynamic weight adjustment is enabled.
+  bool dynamic_weight = 12;
+  // Whether dynamic weight is based on a response header.
+  bool dynamic_weight_header = 13;
+  // Coefficient used for dynamic weight calculation.
+  uint32 dynamic_weight_coeff = 14;
+  
+  // Delay between successive health checks.
+  google.protobuf.Duration delay_loop = 15;
+  // Number of retries allowed for health checks.
+  uint32 retries = 16;
+  // Delay between retries.
+  google.protobuf.Duration retry_delay = 17;
+  
+  // Whether the checker is considered alive.
+  bool alive = 18;
+  // Number of failed health check attempts.
+  uint32 failed_attempts = 19;
+  // Timestamp of the last health check attemt.
+  google.protobuf.Timestamp last_check_ts = 20;
+}

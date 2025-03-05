@@ -1,0 +1,83 @@
+logging:
+  # Logging level, possible values are: "debug", "info", "warn", "error".
+  level: info
+  # Where to log.
+  sinks:
+    - stderr
+  # How to log.
+  encoding: json
+
+tls_min_version: 1.0
+
+announcer:
+  # The time interval between sending requests to external announcer with prefix
+  # updates. Default value is 50ms.
+  update_period: 20ms
+  # List of known announce groups. Defautl value is ["default"].
+  announce_group:
+    - g-1
+    - g-2
+    - g-3
+    - g-nodisable
+    
+bird:
+  # Determines the maximum number of messages sent to the BIRD in a single request.
+  # This value should not exceed the value set in the BIRD daemon.
+  # Default value is 4096.
+  batch_size: 4096
+  # The directory where the BIRD UNIX domain sockets are located.
+  # Default value is "/run/bird".
+  sock_dir: "/run/bird"
+
+balancer:
+  # The time interval between applying new events to the load balancer. 
+  # Default value is 50ms.
+  flush_period: 20ms
+  # The time interval between requesting the load balancer state.
+  # Default value is 5s.
+  sync_states_period: 5s
+
+yanet:
+  # The path to the YANET control plane socket.
+  # Default value is "/run/yanet/protocontrolplane.sock".
+  control_plane_sock_path: "/run/yanet/protocontrolplane.sock"
+
+service:
+  # Defines the configuration for loading and dumping service configurations.
+  services_config:
+    # Format of the services configuration file. Possible values are:
+    # "keepalived" ("json" are coming)
+    format: keepalived
+    # Path to the services configuration file.
+    path: /etc/monalive/services-example.conf
+    # Path where the dumped configuration will be saved (in JSON format).
+    dump_path: /var/lib/monalive/services.conf
+
+# Server is used to handle requests for various management operations with
+# Monalive, such as checking the current configuration status and reloading it.
+server:
+  # Address for the HTTP server to listen on.
+  http_addr: "[::1]:14080"
+  # Address for the gRPC server to listen on.
+  grpc_addr: "[::1]:14081"
+
+check_tun:
+  run_check_tun: true
+  # Nfqueue socket.
+  nfqueue: 1
+  # Maximum number of packages within the nfqueue.
+  max_queue_len: 25000
+  # The maximum packet length that can be read from nfqueue.
+  max_packet_len: 65535
+  # Time till a write action time out.
+  write_timeout: 50us
+  # IPv4 address bound to the AF_INET socket.
+  ipv4_bind: "127.0.0.1"
+  # IPv6 address bound to the AF_INET6 socket.
+  ipv6_bind: "2001:dead:beef::1"
+  # Number of routines for the task.
+  worker_num: 2
+  # Socket buffer size.
+  socket_buffer: 10485760
+  # Receiving buffer size.
+  receive_buffer: 1000
