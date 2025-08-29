@@ -8,13 +8,13 @@ import (
 	"log/slog"
 	"sync"
 
-	"monalive/internal/announcer"
-	"monalive/internal/balancer"
-	"monalive/internal/core/real"
-	"monalive/internal/types/key"
-	"monalive/internal/types/weight"
-	"monalive/internal/utils/shutdown"
-	"monalive/internal/utils/workerpool"
+	"github.com/yanet-platform/monalive/internal/announcer"
+	"github.com/yanet-platform/monalive/internal/balancer"
+	"github.com/yanet-platform/monalive/internal/core/real"
+	"github.com/yanet-platform/monalive/internal/types/key"
+	"github.com/yanet-platform/monalive/internal/types/weight"
+	"github.com/yanet-platform/monalive/internal/utils/shutdown"
+	"github.com/yanet-platform/monalive/internal/utils/workerpool"
 )
 
 // Service represents a virtual server with underlying reals (individual backend

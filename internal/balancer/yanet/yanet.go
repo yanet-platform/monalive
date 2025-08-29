@@ -6,12 +6,12 @@ import (
 	"context"
 	"fmt"
 
-	"monalive/internal/types/key"
-	"monalive/internal/types/port"
-	"monalive/internal/types/weight"
-	"monalive/pkg/yanet"
+	"github.com/yanet-platform/monalive/internal/types/key"
+	"github.com/yanet-platform/monalive/internal/types/port"
+	"github.com/yanet-platform/monalive/internal/types/weight"
+	"github.com/yanet-platform/monalive/pkg/yanet"
 
-	yanetpb "monalive/gen/yanet"
+	yanetpb "github.com/yanet-platform/monalive/gen/yanet"
 )
 
 // Client wraps a YANET client for interacting with the balancer service.

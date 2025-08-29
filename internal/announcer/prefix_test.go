@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"monalive/internal/types/key"
+	"github.com/yanet-platform/monalive/internal/types/key"
 )
 
 // Helper function to create a default service.

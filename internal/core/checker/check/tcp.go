@@ -5,8 +5,8 @@ import (
 	"net"
 	"net/netip"
 
-	"monalive/internal/types/weight"
-	"monalive/internal/utils/xnet"
+	"github.com/yanet-platform/monalive/internal/types/weight"
+	"github.com/yanet-platform/monalive/internal/utils/xnet"
 )
 
 // TCPCheck performs TCP connectivity checks based on the provided

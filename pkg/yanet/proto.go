@@ -15,7 +15,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
 
-	yanetpb "monalive/gen/yanet"
+	yanetpb "github.com/yanet-platform/monalive/gen/yanet"
 )
 
 const defaultYANETControlPlaneSockPath = "/run/yanet/protocontrolplane.sock"

@@ -3,7 +3,7 @@ package balancer
 import (
 	"sync"
 
-	"monalive/internal/types/key"
+	"github.com/yanet-platform/monalive/internal/types/key"
 )
 
 type (

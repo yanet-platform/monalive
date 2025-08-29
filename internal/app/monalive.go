@@ -7,15 +7,15 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
-	"monalive/internal/announcer"
-	"monalive/internal/announcer/bird"
-	"monalive/internal/balancer"
-	"monalive/internal/balancer/yanet"
-	"monalive/internal/core"
-	"monalive/internal/monitoring/xlog"
-	"monalive/internal/server"
-	"monalive/internal/utils/xtls"
-	"monalive/pkg/checktun"
+	"github.com/yanet-platform/monalive/internal/announcer"
+	"github.com/yanet-platform/monalive/internal/announcer/bird"
+	"github.com/yanet-platform/monalive/internal/balancer"
+	"github.com/yanet-platform/monalive/internal/balancer/yanet"
+	"github.com/yanet-platform/monalive/internal/core"
+	"github.com/yanet-platform/monalive/internal/monitoring/xlog"
+	"github.com/yanet-platform/monalive/internal/server"
+	"github.com/yanet-platform/monalive/internal/utils/xtls"
+	"github.com/yanet-platform/monalive/pkg/checktun"
 )
 
 type Monalive struct {

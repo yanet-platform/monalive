@@ -7,13 +7,13 @@ import (
 	"slices"
 	"sync"
 
-	"monalive/internal/core/checker"
-	"monalive/internal/types/key"
-	"monalive/internal/types/weight"
-	"monalive/internal/types/xevent"
-	"monalive/internal/utils/shutdown"
-	"monalive/internal/utils/workerpool"
-	"monalive/internal/utils/xnet"
+	"github.com/yanet-platform/monalive/internal/core/checker"
+	"github.com/yanet-platform/monalive/internal/types/key"
+	"github.com/yanet-platform/monalive/internal/types/weight"
+	"github.com/yanet-platform/monalive/internal/types/xevent"
+	"github.com/yanet-platform/monalive/internal/utils/shutdown"
+	"github.com/yanet-platform/monalive/internal/utils/workerpool"
+	"github.com/yanet-platform/monalive/internal/utils/xnet"
 )
 
 // ActivationFunc defines a function type used to control the activation of a

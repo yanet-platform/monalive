@@ -8,12 +8,12 @@ import (
 	"log/slog"
 	"sync"
 
-	"monalive/internal/announcer"
-	"monalive/internal/balancer"
-	"monalive/internal/core/service"
-	"monalive/internal/types/key"
-	"monalive/internal/utils/shutdown"
-	"monalive/internal/utils/workerpool"
+	"github.com/yanet-platform/monalive/internal/announcer"
+	"github.com/yanet-platform/monalive/internal/balancer"
+	"github.com/yanet-platform/monalive/internal/core/service"
+	"github.com/yanet-platform/monalive/internal/types/key"
+	"github.com/yanet-platform/monalive/internal/utils/shutdown"
+	"github.com/yanet-platform/monalive/internal/utils/workerpool"
 )
 
 // Core manages the lifecycle of the services.

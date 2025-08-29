@@ -7,8 +7,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"monalive/internal/core/service"
-	"monalive/pkg/keepalived"
+	"github.com/yanet-platform/monalive/internal/core/service"
+	"github.com/yanet-platform/monalive/pkg/keepalived"
 )
 
 // ConfigFormat represents the format in which the services configuration is

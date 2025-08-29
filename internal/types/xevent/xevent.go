@@ -1,8 +1,8 @@
 package xevent
 
 import (
-	"monalive/internal/types/key"
-	"monalive/internal/types/weight"
+	"github.com/yanet-platform/monalive/internal/types/key"
+	"github.com/yanet-platform/monalive/internal/types/weight"
 )
 
 // Handler defines a function that processes an Event, allowing for custom logic

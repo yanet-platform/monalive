@@ -1,7 +1,7 @@
 package core
 
 import (
-	monalivepb "monalive/gen/manager"
+	monalivepb "github.com/yanet-platform/monalive/gen/manager"
 )
 
 // Status retrieves the current status of all services managed by the Core

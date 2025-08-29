@@ -1,4 +1,4 @@
-module monalive
+module github.com/yanet-platform/monalive
 
 go 1.22.3
 

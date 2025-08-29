@@ -3,8 +3,8 @@ package service
 import (
 	"log/slog"
 
-	"monalive/internal/types/weight"
-	"monalive/internal/types/xevent"
+	"github.com/yanet-platform/monalive/internal/types/weight"
+	"github.com/yanet-platform/monalive/internal/types/xevent"
 )
 
 // HandleEvent handles an event sent from the real. Depending on the event type,
