@@ -4,9 +4,9 @@ import (
 	"net/netip"
 	"time"
 
-	"monalive/internal/core/checker/check"
-	"monalive/internal/scheduler"
-	"monalive/internal/types/port"
+	"github.com/yanet-platform/monalive/internal/core/checker/check"
+	"github.com/yanet-platform/monalive/internal/scheduler"
+	"github.com/yanet-platform/monalive/internal/types/port"
 )
 
 // Type represents the type of the checker (TCP, HTTP, etc.).

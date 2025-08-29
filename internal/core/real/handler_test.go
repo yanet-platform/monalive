@@ -7,10 +7,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"monalive/internal/monitoring/xlog"
-	"monalive/internal/types/port"
-	"monalive/internal/types/weight"
-	"monalive/internal/types/xevent"
+	"github.com/yanet-platform/monalive/internal/monitoring/xlog"
+	"github.com/yanet-platform/monalive/internal/types/port"
+	"github.com/yanet-platform/monalive/internal/types/weight"
+	"github.com/yanet-platform/monalive/internal/types/xevent"
 )
 
 // testHandler is a test implementation of the xevent.Handler interface. It

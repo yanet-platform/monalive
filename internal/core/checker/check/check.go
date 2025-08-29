@@ -2,7 +2,7 @@
 package check
 
 import (
-	"monalive/internal/types/weight"
+	"github.com/yanet-platform/monalive/internal/types/weight"
 )
 
 // Metadata holds the status and weight information for a health check.

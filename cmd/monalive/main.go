@@ -13,8 +13,8 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/sync/errgroup"
 
-	"monalive/internal/app"
-	"monalive/internal/monitoring/xlog"
+	"github.com/yanet-platform/monalive/internal/app"
+	"github.com/yanet-platform/monalive/internal/monitoring/xlog"
 )
 
 func main() {

@@ -11,9 +11,9 @@ import (
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/metadata"
 
-	"monalive/internal/types/weight"
-	"monalive/internal/utils/xnet"
-	"monalive/internal/utils/xtls"
+	"github.com/yanet-platform/monalive/internal/types/weight"
+	"github.com/yanet-platform/monalive/internal/utils/xnet"
+	"github.com/yanet-platform/monalive/internal/utils/xtls"
 )
 
 // GRPCCheck performs gRPC health checks based on the provided configuration.

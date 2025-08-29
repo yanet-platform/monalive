@@ -12,7 +12,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 
-	monalivepb "monalive/gen/manager"
+	monalivepb "github.com/yanet-platform/monalive/gen/manager"
 )
 
 // Server is used to handle requests for various management operations with

@@ -10,7 +10,7 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	monalivepb "monalive/gen/manager"
+	monalivepb "github.com/yanet-platform/monalive/gen/manager"
 )
 
 // ServicesConfig defines the configuration for loading and dumping service

@@ -10,12 +10,12 @@ import (
 	"sync"
 	"time"
 
-	"monalive/internal/core/checker/check"
-	"monalive/internal/scheduler"
-	"monalive/internal/types/weight"
-	"monalive/internal/types/xevent"
-	"monalive/internal/utils/shutdown"
-	"monalive/internal/utils/xnet"
+	"github.com/yanet-platform/monalive/internal/core/checker/check"
+	"github.com/yanet-platform/monalive/internal/scheduler"
+	"github.com/yanet-platform/monalive/internal/types/weight"
+	"github.com/yanet-platform/monalive/internal/types/xevent"
+	"github.com/yanet-platform/monalive/internal/utils/shutdown"
+	"github.com/yanet-platform/monalive/internal/utils/xnet"
 )
 
 // Check interface defines the behavior required for a health check

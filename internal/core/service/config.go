@@ -7,11 +7,11 @@ import (
 	"net/netip"
 	"strings"
 
-	"monalive/internal/core/real"
-	"monalive/internal/scheduler"
-	"monalive/internal/types/key"
-	"monalive/internal/types/port"
-	"monalive/internal/utils/coalescer"
+	"github.com/yanet-platform/monalive/internal/core/real"
+	"github.com/yanet-platform/monalive/internal/scheduler"
+	"github.com/yanet-platform/monalive/internal/types/key"
+	"github.com/yanet-platform/monalive/internal/types/port"
+	"github.com/yanet-platform/monalive/internal/utils/coalescer"
 )
 
 var ErrInvalidQuorumScript = errors.New("invalid quorum script")

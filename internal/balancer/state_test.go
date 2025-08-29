@@ -8,7 +8,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"monalive/internal/types/key"
+	"github.com/yanet-platform/monalive/internal/types/key"
 )
 
 // TestState_Lookup tests the Lookup method of the State struct.

@@ -5,8 +5,8 @@ import (
 	"net/netip"
 	"sync"
 
-	"monalive/internal/types/key"
-	event "monalive/internal/utils/event_registry"
+	"github.com/yanet-platform/monalive/internal/types/key"
+	event "github.com/yanet-platform/monalive/internal/utils/event_registry"
 )
 
 // ErrPrefixNotFound is returned when a requested prefix cannot be found.

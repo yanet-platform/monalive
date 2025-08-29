@@ -6,12 +6,12 @@ import (
 	"slices"
 	"strconv"
 
-	"monalive/internal/core/checker"
-	"monalive/internal/scheduler"
-	"monalive/internal/types/key"
-	"monalive/internal/types/port"
-	"monalive/internal/types/weight"
-	"monalive/internal/utils/coalescer"
+	"github.com/yanet-platform/monalive/internal/core/checker"
+	"github.com/yanet-platform/monalive/internal/scheduler"
+	"github.com/yanet-platform/monalive/internal/types/key"
+	"github.com/yanet-platform/monalive/internal/types/port"
+	"github.com/yanet-platform/monalive/internal/types/weight"
+	"github.com/yanet-platform/monalive/internal/utils/coalescer"
 )
 
 // Scheduler is a type alias for [scheduler.Config] to provide more informative naming

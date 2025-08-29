@@ -7,10 +7,10 @@ import (
 	"net/netip"
 	"strings"
 
-	"monalive/internal/types/key"
-	"monalive/internal/types/port"
+	"github.com/yanet-platform/monalive/internal/types/key"
+	"github.com/yanet-platform/monalive/internal/types/port"
 
-	yanetpb "monalive/gen/yanet"
+	yanetpb "github.com/yanet-platform/monalive/gen/yanet"
 )
 
 // fmtToProtoAddr converts a [netip.Addr] to a [yanetpb.IPAddr].

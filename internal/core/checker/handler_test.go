@@ -7,12 +7,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"monalive/internal/core/checker/check"
-	"monalive/internal/monitoring/xlog"
-	"monalive/internal/scheduler"
-	"monalive/internal/types/weight"
-	"monalive/internal/types/xevent"
-	"monalive/internal/utils/xnet"
+	"github.com/yanet-platform/monalive/internal/core/checker/check"
+	"github.com/yanet-platform/monalive/internal/monitoring/xlog"
+	"github.com/yanet-platform/monalive/internal/scheduler"
+	"github.com/yanet-platform/monalive/internal/types/weight"
+	"github.com/yanet-platform/monalive/internal/types/xevent"
+	"github.com/yanet-platform/monalive/internal/utils/xnet"
 )
 
 // testHandler is a mock handler used for testing. It stores the last event

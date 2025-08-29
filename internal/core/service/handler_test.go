@@ -5,11 +5,11 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"monalive/internal/announcer"
-	"monalive/internal/balancer"
-	"monalive/internal/monitoring/xlog"
-	"monalive/internal/types/weight"
-	"monalive/internal/types/xevent"
+	"github.com/yanet-platform/monalive/internal/announcer"
+	"github.com/yanet-platform/monalive/internal/balancer"
+	"github.com/yanet-platform/monalive/internal/monitoring/xlog"
+	"github.com/yanet-platform/monalive/internal/types/weight"
+	"github.com/yanet-platform/monalive/internal/types/xevent"
 )
 
 // defaultService initializes and returns a new Service instance

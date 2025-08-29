@@ -8,9 +8,9 @@ import (
 	"net"
 	"net/netip"
 
-	xbird "monalive/pkg/bird"
+	xbird "github.com/yanet-platform/monalive/pkg/bird"
 
-	"monalive/internal/announcer"
+	"github.com/yanet-platform/monalive/internal/announcer"
 )
 
 // Bird is an implementation of the announcer.Client interface that interacts

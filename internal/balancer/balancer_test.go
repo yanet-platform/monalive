@@ -10,9 +10,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"monalive/internal/monitoring/xlog"
-	"monalive/internal/types/key"
-	"monalive/internal/types/xevent"
+	"github.com/yanet-platform/monalive/internal/monitoring/xlog"
+	"github.com/yanet-platform/monalive/internal/types/key"
+	"github.com/yanet-platform/monalive/internal/types/xevent"
 )
 
 // mockBalancerClient is a mock implementation of the LoadBalancerClient

@@ -5,9 +5,9 @@ import (
 	"log/slog"
 	"time"
 
-	"monalive/internal/core/checker/check"
-	"monalive/internal/types/weight"
-	"monalive/internal/types/xevent"
+	"github.com/yanet-platform/monalive/internal/core/checker/check"
+	"github.com/yanet-platform/monalive/internal/types/weight"
+	"github.com/yanet-platform/monalive/internal/types/xevent"
 )
 
 // ProcessCheck processes the results of a health check, updating the internal

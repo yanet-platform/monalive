@@ -11,7 +11,7 @@ import (
 	"time"
 	"unsafe"
 
-	"monalive/pkg/checktun"
+	"github.com/yanet-platform/monalive/pkg/checktun"
 )
 
 const (

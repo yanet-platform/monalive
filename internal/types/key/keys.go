@@ -3,7 +3,7 @@ package key
 import (
 	"net/netip"
 
-	"monalive/internal/types/port"
+	"github.com/yanet-platform/monalive/internal/types/port"
 )
 
 type Service struct {

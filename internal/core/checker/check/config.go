@@ -4,7 +4,7 @@ import (
 	"net/netip"
 	"time"
 
-	"monalive/internal/types/port"
+	"github.com/yanet-platform/monalive/internal/types/port"
 )
 
 // Config represents the full configuration for a health check. It includes URL

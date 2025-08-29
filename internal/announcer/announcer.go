@@ -15,8 +15,8 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
-	"monalive/internal/types/key"
-	"monalive/internal/utils/shutdown"
+	"github.com/yanet-platform/monalive/internal/types/key"
+	"github.com/yanet-platform/monalive/internal/utils/shutdown"
 )
 
 // ErrShutdown is returned when the announcer is shutdown.
