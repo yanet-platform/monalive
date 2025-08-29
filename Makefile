@@ -46,8 +46,8 @@ generate-yanet: $(YANET_DIR)
 	@FILES=$$(ls -1 $(YANET_PROTO_DIR)/*.proto | xargs -n1 basename); \
 	GO_OPTS=; GRPC_OPTS=; \
 	for file in $$FILES; do \
-		GO_OPTS+="--go_opt=M$$file=$(YANET_MODULE) "; \
-		GRPC_OPTS+="--go-grpc_opt=M$$file=$(YANET_MODULE) "; \
+		GO_OPTS=$$GO_OPTS"--go_opt=M$$file=$(YANET_MODULE) "; \
+		GRPC_OPTS=$$GRPC_OPTS"--go-grpc_opt=M$$file=$(YANET_MODULE) "; \
 	done; \
 	protoc -I. -I=$(YANET_PROTO_DIR) -I=$(PROTOBUF_INCLUDE) \
 		--go_out=$(YANET_OUT_DIR) \
