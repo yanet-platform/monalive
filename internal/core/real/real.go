@@ -42,6 +42,8 @@ type Real struct {
 	eventsWG sync.WaitGroup // to manage goroutines handling events
 
 	activationFunc ActivationFunc // used to control the activation of the real if necessary
+	isActive       bool
+	reloadMu       sync.Mutex // to prevent concurrent config updates
 
 	shutdown *shutdown.Shutdown
 	log      *slog.Logger
@@ -135,7 +137,13 @@ func (m *Real) Run(ctx context.Context) {
 	defer m.log.Info("real stopped", slog.String("event_type", "real update"))
 
 	// Reload to apply initial checkers configuration.
-	go m.Reload(m.config)
+	go func() {
+		m.reloadMu.Lock()
+		defer m.reloadMu.Unlock()
+		// Mark the real as active and perform initial reload.
+		m.isActive = true
+		m.reload()
+	}()
 
 	// Run the real's worker pool.
 	m.checkersPool.Run(ctx)
@@ -144,8 +152,51 @@ func (m *Real) Run(ctx context.Context) {
 // Reload updates the configuration of the real service, stopping outdated
 // checkers and creating new ones as necessary.
 func (m *Real) Reload(config *Config) {
+	m.reloadMu.Lock()
+	defer m.reloadMu.Unlock()
+
+	// Save the new config and call reload if the real is active.
+	m.config = config
+	if m.isActive {
+		m.reload()
+	}
+}
+
+// Stop gracefully stops the real service, ensuring all checkers and event
+// handling are properly terminated.
+func (m *Real) Stop() {
+	// Trigger the shutdown signal to gracefully stop workers.
+	m.shutdown.Do()
+
+	// Lock the checkers mutex to ensure thread-safe access.
 	m.checkersMu.Lock()
 	defer m.checkersMu.Unlock()
+	// Gracefully stop all checkers.
+	for _, checker := range m.checkers {
+		checker.Stop()
+	}
+
+	// Wait for all event handling goroutines to finish.
+	m.eventsWG.Wait()
+
+	// Close the worker pool.
+	m.checkersPool.Close()
+}
+
+// Key returns the unique key associated with the real.
+func (m *Real) Key() key.Real {
+	return m.key
+}
+
+// State returns the current state of the real.
+func (m *Real) State() State {
+	m.stateMu.RLock()
+	defer m.stateMu.RUnlock()
+	return m.state
+}
+
+func (m *Real) reload() {
+	config := m.config
 
 	// Prepare forwarding data that will be used by the checkers.
 	forwardingData := xnet.ForwardingData{
@@ -228,44 +279,14 @@ func (m *Real) Reload(config *Config) {
 	}
 
 	// Update the state to reflect if dynamic weight is used.
+	m.stateMu.Lock()
 	m.state.DynWeight = dynamicWeight
+	m.stateMu.Unlock()
 
-	// Save the new config and the updated set of checkers.
-	m.config = config
-	m.checkers = newCheckers
-}
-
-// Stop gracefully stops the real service, ensuring all checkers and event
-// handling are properly terminated.
-func (m *Real) Stop() {
-	// Trigger the shutdown signal to gracefully stop workers.
-	m.shutdown.Do()
-
-	// Lock the checkers mutex to ensure thread-safe access.
+	// Save the updated set of checkers.
 	m.checkersMu.Lock()
 	defer m.checkersMu.Unlock()
-	// Gracefully stop all checkers.
-	for _, checker := range m.checkers {
-		checker.Stop()
-	}
-
-	// Wait for all event handling goroutines to finish.
-	m.eventsWG.Wait()
-
-	// Close the worker pool.
-	m.checkersPool.Close()
-}
-
-// Key returns the unique key associated with the real.
-func (m *Real) Key() key.Real {
-	return m.key
-}
-
-// State returns the current state of the real.
-func (m *Real) State() State {
-	m.stateMu.RLock()
-	defer m.stateMu.RUnlock()
-	return m.state
+	m.checkers = newCheckers
 }
 
 // waitActivation blocks execution until the activation function returns, if it
