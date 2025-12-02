@@ -49,6 +49,10 @@ type State struct {
 	Alive          bool
 	FailedAttempts int
 	Timestamp      time.Time
+
+	// ManualChanged is a flag indicates that configuration of checker has
+	// changed manually.
+	ManualChanged bool
 }
 
 // New creates a new Checker instance.
@@ -156,6 +160,10 @@ func (m *Checker) Run(ctx context.Context) {
 		// Perform the check operation.
 		opErr := m.check.Do(ctx, &md)
 
+		// Force check result processing if the configuration has changed
+		// manually.
+		md.Force = currState.ManualChanged
+
 		// Process the result of the check operation.
 		m.ProcessCheck(md, opErr)
 
@@ -170,6 +178,14 @@ func (m *Checker) Stop() {
 	m.shutdown.Do()
 	// Wait for all checks to finish.
 	m.eventsWG.Wait()
+}
+
+func (m *Checker) UpdateWeight(weight weight.Weight) {
+	m.stateMu.Lock()
+	defer m.stateMu.Unlock()
+	m.log.Info("updating weight", slog.Int("weight", int(weight)), slog.String("event_type", "checker update"))
+	m.state.Weight = weight
+	m.state.ManualChanged = true
 }
 
 // State returns the current state of the checker.

@@ -88,6 +88,10 @@ func (m *Config) Prepare() error {
 	m.VIP = m.VIP.Unmap()
 	// Ensure the protocol is uppercase.
 	m.Protocol = strings.ToUpper(m.Protocol)
+	// Ensure the forwarding method is uppercase.
+	m.ForwardingMethod = strings.ToUpper(m.ForwardingMethod)
+	// Ensure the LVS Sheduler is lowercase.
+	m.LVSSheduler = strings.ToLower(m.LVSSheduler)
 
 	// Validate the configuration.
 	if err := m.validate(); err != nil {
@@ -142,7 +146,7 @@ func (m Config) MarshalJSON() ([]byte, error) {
 // service.
 func (m *Config) propagate() {
 	for _, real := range m.Reals {
-		if m.ForwardingMethod == "" {
+		if real.ForwardingMethod == "" {
 			real.ForwardingMethod = m.ForwardingMethod
 		}
 		real.DelayLoop = coalescer.Coalesce(real.DelayLoop, m.DelayLoop)
@@ -197,6 +201,35 @@ func (m *Config) announceGroupFromQuorumScript() (string, error) {
 	group := fields[len(fields)-2]
 
 	return group, nil
+}
+
+// DefaultConfig return default service configuration.
+// Used for testing purpuses only.
+func DefaultConfig() *Config {
+	virtualhost := "virtualhost"
+	version := "1.0.0"
+	var schedConfig Scheduler
+	schedConfig.Default()
+	return &Config{
+		VIP:                    netip.MustParseAddr("10.0.0.0"),
+		VPort:                  80,
+		Protocol:               "tcp",
+		LVSSheduler:            "wrr",
+		ForwardingMethod:       "tun",
+		Quorum:                 10,
+		Hysteresis:             10,
+		QuorumUp:               "",
+		QuorumDown:             "",
+		AnnounceGroup:          "",
+		Virtualhost:            &virtualhost,
+		FwMark:                 12345,
+		OnePacketScheduler:     false,
+		IPv4OuterSourceNetwork: "10.0.0.0/8",
+		IPv6OuterSourceNetwork: "fd00::/8",
+		Version:                &version,
+		Scheduler:              schedConfig,
+		Reals:                  nil,
+	}
 }
 
 // convertScheduler maps certain scheduler types to others based on conditions.

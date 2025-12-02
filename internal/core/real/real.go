@@ -153,6 +153,17 @@ func (m *Real) Reload(config *Config) {
 		ForwardingMethod: config.ForwardingMethod,
 	}
 
+	// Check if the forwarding method has changed. If so, force a reload of the
+	// checkers.
+	forceReload := false
+	if m.config.ForwardingMethod != config.ForwardingMethod {
+		m.log.Info(
+			"forwarding method changed, force reload checkers",
+			slog.String("event_type", "real update"),
+		)
+		forceReload = true
+	}
+
 	// Track if any checker supports dynamic weight.
 	dynamicWeight := false
 
@@ -176,9 +187,17 @@ func (m *Real) Reload(config *Config) {
 
 		default:
 			key := cfg.Key()
-			switch knownChecker, exists := m.checkers[key]; exists {
+			switch knownChecker, exists := m.checkers[key]; exists && !forceReload {
 			// If a checker with the same key already exists, reuse it.
 			case true:
+				// The real weight is passed to the checker only once, during
+				// its initialization. Since it is possible that the weight has
+				// changed in the configuration, we need to update the checker's
+				// weight manually.
+				if m.config.Weight != config.Weight {
+					// If the weight has changed, update it.
+					knownChecker.UpdateWeight(config.Weight)
+				}
 				newCheckers[key] = knownChecker
 				// Remove from the old checkers map.
 				delete(m.checkers, key)

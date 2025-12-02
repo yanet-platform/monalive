@@ -49,10 +49,13 @@ func (m *Checker) processSucceed(md check.Metadata) {
 	newWeight := md.Weight.Recalculate(m.state.Weight, m.config.DynamicWeightCoeff)
 	weightChanged := m.updateWeight(newWeight)
 
-	if !statusChanged && !weightChanged {
+	if !statusChanged && !weightChanged && !md.Force {
 		// If neither the status nor the weight changed, no event is triggered.
 		return
 	}
+
+	// Reset the ManualChanged flag.
+	m.state.ManualChanged = false
 
 	// Trigger an event to notify that the checker has been enabled with the new
 	// weight. Other event fields will be filled in when passing the real and

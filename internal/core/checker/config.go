@@ -94,6 +94,9 @@ func (m *Config) Prepare() error {
 
 // Key returns a Key representation of the Config, which includes all necessary
 // fields to uniquely identify the checker configuration.
+//
+// TODO: seems that not all of the checker fields must be treated as its key.
+// Some of the parameters can be updated at the runtime.
 func (m *Config) Key() Key {
 	var virtualhost string
 	if m.Virtualhost != nil {
@@ -122,5 +125,16 @@ func (m *Config) Key() Key {
 		delayLoop:  m.GetDelayLoop(),
 		retries:    m.GetRetries(),
 		retryDelay: m.GetRetryDelay(),
+	}
+}
+
+// DefaultConfig return default checker configuration.
+// Used for testing purpuses only.
+func DefaultConfig() *Config {
+	var schedConfig Scheduler
+	schedConfig.Default()
+	return &Config{
+		CheckConfig: check.DefaultConfig(),
+		Scheduler:   schedConfig,
 	}
 }

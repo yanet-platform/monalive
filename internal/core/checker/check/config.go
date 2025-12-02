@@ -86,3 +86,30 @@ func (m *Net) GetCheckTimeout() time.Duration {
 
 	return time.Duration(m.CheckTimeout * float64(time.Second))
 }
+
+// DefaultConfig return default check configuration.
+// Used for testing purpuses only.
+func DefaultConfig() Config {
+	virtualhost := "virtualhost"
+	return Config{
+		URL: URL{
+			Path:        "/",
+			StatusCode:  200,
+			Digest:      "abcd",
+			Virtualhost: &virtualhost,
+		},
+		Net: Net{
+			ConnectIP:      netip.MustParseAddr("127.0.0.1"),
+			ConnectPort:    80,
+			BindIP:         netip.MustParseAddr("127.0.0.2"),
+			ConnectTimeout: 5,
+			CheckTimeout:   10,
+			FWMark:         12345,
+		},
+		WeightControl: WeightControl{
+			DynamicWeight:       true,
+			DynamicWeightHeader: true,
+			DynamicWeightCoeff:  10,
+		},
+	}
+}
