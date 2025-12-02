@@ -142,7 +142,7 @@ func (m *Real) Run(ctx context.Context) {
 		defer m.reloadMu.Unlock()
 		// Mark the real as active and perform initial reload.
 		m.isActive = true
-		m.reload()
+		m.reload(m.config)
 	}()
 
 	// Run the real's worker pool.
@@ -155,11 +155,13 @@ func (m *Real) Reload(config *Config) {
 	m.reloadMu.Lock()
 	defer m.reloadMu.Unlock()
 
-	// Save the new config and call reload if the real is active.
-	m.config = config
-	if m.isActive {
-		m.reload()
+	if !m.isActive {
+		// If the real is not active yet, save the new config and return early.
+		m.config = config
+		return
 	}
+
+	m.reload(config)
 }
 
 // Stop gracefully stops the real service, ensuring all checkers and event
@@ -195,9 +197,7 @@ func (m *Real) State() State {
 	return m.state
 }
 
-func (m *Real) reload() {
-	config := m.config
-
+func (m *Real) reload(config *Config) {
 	// Prepare forwarding data that will be used by the checkers.
 	forwardingData := xnet.ForwardingData{
 		RealIP:           config.IP,
@@ -283,7 +283,8 @@ func (m *Real) reload() {
 	m.state.DynWeight = dynamicWeight
 	m.stateMu.Unlock()
 
-	// Save the updated set of checkers.
+	//  Save the new config and the updated set of checkers.
+	m.config = config
 	m.checkersMu.Lock()
 	defer m.checkersMu.Unlock()
 	m.checkers = newCheckers
