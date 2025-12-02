@@ -22,10 +22,8 @@ func (m *Real) HandleEvent(event *xevent.Event) {
 	switch event.Type {
 	case xevent.Enable:
 		dropEvent = m.processSucceed(event)
-	case xevent.Disable:
+	case xevent.Disable, xevent.Shutdown:
 		dropEvent = m.processFail(event)
-	case xevent.Shutdown:
-		dropEvent = m.processShutdown(event)
 	}
 
 	if dropEvent {
@@ -85,7 +83,7 @@ func (m *Real) processFail(event *xevent.Event) (drop bool) {
 	initStatus := m.state.Status()
 
 	// Disable the real and check if its status has changed.
-	if statusChanged := m.disableReal(); !statusChanged {
+	if statusChanged := m.disableReal(event.Type); !statusChanged {
 		// If the status hasn't changed, no further action is needed.
 		return true
 	}
@@ -100,23 +98,6 @@ func (m *Real) processFail(event *xevent.Event) (drop bool) {
 
 	// Update the event with the initial status for comparison later.
 	event.Init = initStatus
-
-	return false
-}
-
-// processShutdown handles the shutdown event, updating the real's status.
-func (m *Real) processShutdown(event *xevent.Event) (drop bool) {
-	// Lock the state mutex to ensure thread-safe updates to the real's state.
-	m.stateMu.Lock()
-	defer m.stateMu.Unlock()
-
-	// If the real is already disabled and not inhibited, shutdown does nothing.
-	if !m.state.Alive && !m.state.Inhibited {
-		return true
-	}
-
-	// Update the event with the initial status before shutdown.
-	event.Init = m.state.Status()
 
 	return false
 }
@@ -157,7 +138,7 @@ func (m *Real) enableReal() (changed bool) {
 
 // disableReal disables the real, updating its status and inhibition state if
 // applicable.
-func (m *Real) disableReal() (changed bool) {
+func (m *Real) disableReal(eventType xevent.Type) (changed bool) {
 	// If the real is already disabled and can't be inhibited, do nothing.
 	//
 	// NOTE: this might be a bit confusing why checking the InhibitOnFailure
@@ -173,14 +154,21 @@ func (m *Real) disableReal() (changed bool) {
 		return false
 	}
 
+	isShutdown := eventType == xevent.Shutdown
+
 	// If the real is already disabled and inhibited, do nothing.
-	if !m.state.Alive && m.state.Inhibited {
+	if !m.state.Alive && m.state.Inhibited && !isShutdown {
 		return false
 	}
 
 	// If inhibition on failure is configured, mark the real as inhibited.
 	if m.config.InhibitOnFailure {
 		m.state.Inhibited = true
+	}
+
+	// If the shutdown event is received, clear the inhibition.
+	if isShutdown {
+		m.state.Inhibited = false
 	}
 
 	// Mark the real as disabled.

@@ -636,6 +636,9 @@ func TestHandleEvent_Shutdown_Enabled(t *testing.T) {
 		check := shutdownEvent()
 		real.HandleEvent(check)
 
+		assert.Equal(t, false, real.State().Alive)
+		assert.Equal(t, initWeight, real.State().Weight)
+
 		event := handler.Event()
 		require.NotNil(t, event)
 		assert.Equal(t, real.Key(), event.Real)
@@ -703,6 +706,9 @@ func TestHandleEvent_Shutdown_Inhibited(t *testing.T) {
 		// handled.
 		check := shutdownEvent()
 		real.HandleEvent(check)
+
+		assert.Equal(t, false, real.State().Alive)
+		assert.Equal(t, initWeight, real.State().Weight)
 
 		event := handler.Event()
 		require.NotNil(t, event)
