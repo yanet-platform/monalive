@@ -1,39 +1,32 @@
 package server
 
 import (
-	"context"
 	"log/slog"
 	"net/http"
 	"time"
 
-	"github.com/google/uuid"
+	"github.com/yanet-platform/monalive/internal/types/requestid"
 )
-
-type ContextKey string
-
-const RequestIDContextKey ContextKey = "request_id"
-
-const HeaderKey = "X-Request-ID"
 
 // requestIDMiddleware adds a request ID to the request context and response headers
 func requestIDMiddleware(logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Generate a new request ID
-			reqID := uuid.New().String()
+			reqID := requestid.Generate()
 
 			// Add request ID to the context
-			ctx := context.WithValue(r.Context(), RequestIDContextKey, reqID)
+			ctx := requestid.NewContext(r.Context(), reqID)
 			r = r.WithContext(ctx)
 
 			// Add request ID to response headers
-			w.Header().Set(HeaderKey, reqID)
+			w.Header().Set(requestid.HeaderKey, string(reqID))
 
 			logger.Info("HTTP request received",
 				slog.String("method", r.Method),
 				slog.String("path", r.URL.Path),
 				slog.String("remote_addr", r.RemoteAddr),
-				slog.String("request_id", reqID),
+				slog.String("request_id", string(reqID)),
 			)
 
 			start := time.Now()
@@ -43,7 +36,7 @@ func requestIDMiddleware(logger *slog.Logger) func(http.Handler) http.Handler {
 				slog.String("method", r.Method),
 				slog.String("path", r.URL.Path),
 				slog.String("remote_addr", r.RemoteAddr),
-				slog.String("request_id", reqID),
+				slog.String("request_id", string(reqID)),
 				slog.String("duration", time.Since(start).String()),
 			)
 		})

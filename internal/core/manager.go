@@ -12,6 +12,7 @@ import (
 
 	monalivepb "github.com/yanet-platform/monalive/gen/manager"
 	"github.com/yanet-platform/monalive/internal/core/service"
+	"github.com/yanet-platform/monalive/internal/types/requestid"
 )
 
 // ServicesConfig defines the configuration for loading and dumping service
@@ -72,29 +73,32 @@ func NewManager(config *ManagerConfig, core *Core, logger *slog.Logger) (*Manage
 //
 // Implements the Reload method defined in monalivepb.
 func (m *Manager) Reload(ctx context.Context, _ *monalivepb.ReloadRequest) (*monalivepb.ReloadResponse, error) {
-	m.logger.Info("starting reload services configuration")
-	defer m.logger.Info("reload services configuration finished")
+	reqID, _ := requestid.FromContext(ctx)
+	logger := m.logger.With(slog.Any("request_id", reqID))
+
+	logger.Info("starting reload services configuration", slog.Any("request_id", reqID))
+	defer logger.Info("reload services configuration finished", slog.Any("request_id", reqID))
 
 	config, err := m.loadConfig()
 	if err != nil {
-		m.logger.Error("failed to load services configuration", slog.Any("error", err))
+		logger.Error("failed to load services configuration", slog.Any("error", err))
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
 	if err := config.Prepare(); err != nil {
-		m.logger.Error("failed to prepare services configuration", slog.Any("error", err))
+		logger.Error("failed to prepare services configuration", slog.Any("error", err))
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
 	if err := m.core.Reload(config); err != nil {
-		m.logger.Error("failed to process reload", slog.Any("error", err))
+		logger.Error("failed to process reload", slog.Any("error", err))
 		return nil, status.Error(codes.Internal, fmt.Sprintf("failed to process reload: %v", err))
 	}
 
 	m.updateTS = time.Now()
 
 	if err := config.Dump(m.config.Services.DumpPath); err != nil {
-		m.logger.Error("failed to dump services configuration", slog.Any("error", err))
+		logger.Error("failed to dump services configuration", slog.Any("error", err))
 		return nil, status.Error(codes.Internal, fmt.Sprintf("failed to dump services config: %v", err))
 	}
 
