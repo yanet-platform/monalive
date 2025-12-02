@@ -96,8 +96,8 @@ func WithActivationFunc(activation ActivationFunc) Option {
 // New creates a new Real instance.
 func New(config *Config, handler xevent.Handler, logger *slog.Logger, opts ...Option) *Real {
 	logger = logger.With(
-		slog.String("virtual_ip", config.IP.String()),
-		slog.String("port", config.Port.String()),
+		slog.String("real_ip", config.IP.String()),
+		slog.String("real_port", config.Port.String()),
 	)
 	defer logger.Info("real created", slog.String("event_type", "real update"))
 

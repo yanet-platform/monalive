@@ -108,12 +108,7 @@ func (m *HTTPCheck) URI() string {
 		// Use HTTPS if TLS configuration is set.
 		schema = "https"
 	}
-
 	host := netip.AddrPortFrom(m.config.ConnectIP, m.config.ConnectPort.Value()).String()
-	if m.config.Virtualhost != nil {
-		// Set virtual host if configured.
-		host = *m.config.Virtualhost
-	}
 
 	path := m.config.Path
 
@@ -127,6 +122,11 @@ func (m *HTTPCheck) newRequest(ctx context.Context, md *Metadata) (*http.Request
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, m.uri, nil)
 	if err != nil {
 		return nil, err
+	}
+
+	if m.config.Virtualhost != nil {
+		// Set virtual host if configured.
+		request.Host = *m.config.Virtualhost
 	}
 
 	// Set Monalive User-Agent header.
