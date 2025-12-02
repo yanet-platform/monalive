@@ -71,7 +71,7 @@ message ServiceStatus {
   // Load balancing method used (e.g., IPIP, GRE).
   string lvs_method = 4;
   // Current quorum state of the service.
-  int32 quorum_state = 5;
+  uint32 quorum_state = 5;
   // Number of alive real servers in the service.
   uint32 alive_count = 6;
   // Total weight of alive real servers.
@@ -97,7 +97,7 @@ message RealStatus {
   // Optional port number of the real server.
   optional uint32 port = 2;
   // Whether the real server is currently alive.
-  bool alive = 3;
+  uint32 alive = 3;
   // Weight assigned to the real server.
   uint32 weight = 4;
   // Number of state transitions for the real server.
@@ -149,7 +149,7 @@ message CheckerStatus {
   google.protobuf.Duration retry_delay = 17;
   
   // Whether the checker is considered alive.
-  bool alive = 18;
+  uint32 alive = 18;
   // Number of failed health check attempts.
   uint32 failed_attempts = 19;
   // Timestamp of the last health check attemt.
