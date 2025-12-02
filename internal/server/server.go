@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"time"
@@ -23,12 +24,13 @@ type Server struct {
 	manager    monalivepb.MonaliveManagerServer
 	grpcServer *grpc.Server
 	httpServer *http.Server
+	logger     *slog.Logger
 }
 
 // New creates a new Server instance with the given configuration and gRPC
 // manager. It initializes both gRPC and HTTP servers and registers necessary
 // services.
-func New(config *Config, manager monalivepb.MonaliveManagerServer) *Server {
+func New(config *Config, manager monalivepb.MonaliveManagerServer, logger *slog.Logger) *Server {
 	// Create a new gRPC server and register the MonaliveManagerServer
 	// implementation.
 	gRPCServer := grpc.NewServer()
@@ -97,7 +99,9 @@ func (m *Server) runHTTPServer(ctx context.Context) error {
 		return fmt.Errorf("failed to register handler: %w", err)
 	}
 
-	m.httpServer.Handler = mux
+	// Wrap mux with request ID middleware.
+	handler := requestIDMiddleware(m.logger)(mux)
+	m.httpServer.Handler = handler
 
 	return m.httpServer.ListenAndServe()
 }

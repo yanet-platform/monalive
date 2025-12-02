@@ -4,6 +4,7 @@ go 1.22.3
 
 require (
 	github.com/google/gopacket v1.1.19
+	github.com/google/uuid v1.6.0
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.26.1
 	github.com/spf13/cobra v1.8.1
 	github.com/stretchr/testify v1.10.0

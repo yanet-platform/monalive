@@ -72,7 +72,7 @@ func New(config Config, logger *slog.Logger) (*Monalive, error) {
 	}
 
 	// Initialize the server with the core manager.
-	server := server.New(config.Server, coreManager)
+	server := server.New(config.Server, coreManager, logger)
 
 	return &Monalive{
 		config:      config,
