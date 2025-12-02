@@ -156,6 +156,10 @@ func (m *Service) Reload(config *Config) {
 	// updated set of reals and update service config.
 	m.reals = newReals
 	m.config = config
+
+	// It is neccesary to process the status of the service announce after
+	// reload due to possible changes in the announce settings.
+	m.processAnnounce()
 }
 
 // Stop gracefully shuts down the service, stopping all associated reals and

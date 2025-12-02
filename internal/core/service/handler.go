@@ -17,25 +17,18 @@ func (m *Service) HandleEvent(event *xevent.Event) {
 	defer m.eventsWG.Done()
 
 	// Process the event.
-	announceChanged := m.processEvent(event)
+	m.processEvent(event)
 
 	// Real sends event only when the status changes (enable, disable or weight
 	// changes). All these changes must be synced with the load balancer.
 	m.balancer.HandleEvent(event)
 
-	if announceChanged && m.config.AnnounceGroup != "" {
-		// If the service announce status changed and service's announce group
-		// is set (which means that the service affects it's host prefix
-		// announce), then pass the update to the announcer.
-		err := m.announcer.UpdateService(m.config.AnnounceGroup, m.key, m.state.Alive)
-		if err != nil {
-			m.log.Error("failed to set up announce", slog.Any("error", err))
-		}
-	}
+	// Update the service announce status.
+	m.processAnnounce()
 }
 
 // processEvent processes an event received by the service.
-func (m *Service) processEvent(event *xevent.Event) (announceChanged bool) {
+func (m *Service) processEvent(event *xevent.Event) {
 	m.stateMu.Lock()
 	defer m.stateMu.Unlock()
 
@@ -49,10 +42,6 @@ func (m *Service) processEvent(event *xevent.Event) (announceChanged bool) {
 	case xevent.Disable, xevent.Shutdown:
 		m.processFailure(event)
 	}
-
-	// Update the service announce status.
-	changed := m.updateAnnounce()
-	return changed
 }
 
 // processSucceed updates the service state when a successful event occurs.
@@ -79,6 +68,22 @@ func (m *Service) processFailure(event *xevent.Event) {
 	m.state.Weight -= event.Init.Weight
 	// Decrement the count of alive reals.
 	m.state.RealsAlive--
+}
+
+// processAnnounce updates the service announce status based on the current
+// service state.
+func (m *Service) processAnnounce() {
+	// Update the service announce status.
+	announceChanged := m.updateAnnounce()
+	if announceChanged && m.config.AnnounceGroup != "" {
+		// If the service announce status changed and service's announce group
+		// is set (which means that the service affects it's host prefix
+		// announce), then pass the update to the announcer.
+		err := m.announcer.UpdateService(m.config.AnnounceGroup, m.key, m.state.Alive)
+		if err != nil {
+			m.log.Error("failed to set up announce", slog.Any("error", err))
+		}
+	}
 }
 
 // updateAnnounce determines the new service state based on quorum and updates
