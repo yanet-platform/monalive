@@ -59,7 +59,10 @@ func New(config Config, logger *slog.Logger) (*Monalive, error) {
 	balancer := balancer.New(config.Balancer, yanetClient, logger)
 
 	// Initialize the check tunneler.
-	tunneler := checktun.New(config.Tunnel, xlog.NewNopLogger())
+	tunneler, err := checktun.New(config.Tunnel, xlog.NewNopLogger())
+	if err != nil {
+		return nil, fmt.Errorf("failed to create checktun: %w", err)
+	}
 
 	// Create the core service and its manager.
 	coreService := core.New(announcer, balancer, logger)
