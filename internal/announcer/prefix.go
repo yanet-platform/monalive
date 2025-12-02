@@ -254,21 +254,25 @@ func (m *prefixState) ApplyServices(newServices []key.Service) {
 
 	// Create a new set of services based on the provided list.
 	newServicesSet := make(map[key.Service]ServiceStatus, len(newServices))
+	// Count the number of active services in the new set of services.
+	active := 0
 	for _, service := range newServices {
-		newServicesSet[service] = ServiceDisabled
-	}
+		// All new services are disabled by default.
+		status := ServiceDisabled
 
-	// Remove any services that are no longer active.
-	for service, status := range m.services {
-		if _, exists := newServicesSet[service]; !exists {
-			if status == ServiceEnabled {
-				m.active--
-			}
+		// If the service was presented earlier and has [ServiceEnabled] status,
+		// update its status.
+		if knownStatus, exists := m.services[service]; exists && knownStatus == ServiceEnabled {
+			status = ServiceEnabled
+			active++
 		}
+		newServicesSet[service] = status
 	}
 
 	// Update the active services map with the new set of services.
 	m.services = newServicesSet
+	// Update the active count based on the new set of services.
+	m.active = active
 	// Update the quorum based on the number of new services.
 	m.quorum = len(newServices)
 }
