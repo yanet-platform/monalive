@@ -69,15 +69,15 @@ func (m *Core) Reload(config *Config) error {
 	// It is crutial to update the announcer first, as it will immediately
 	// remove announces of the deleted services.
 	//
-	// Group services by announce group for reloading.
-	servicesGroups := make(map[string][]key.Service)
+	// Construct mapping of services to their announce groups.
+	servicesForAnnouncer := make(map[key.Service]string)
 	for _, cfg := range config.Services {
 		if cfg.AnnounceGroup != "" {
-			servicesGroups[cfg.AnnounceGroup] = append(servicesGroups[cfg.AnnounceGroup], cfg.Key())
+			servicesForAnnouncer[cfg.Key()] = cfg.AnnounceGroup
 		}
 	}
-	// Reload the announcer with new services groups.
-	if err := m.announcer.ReloadServices(servicesGroups); err != nil {
+	// Reload the announcer with new services.
+	if err := m.announcer.ReloadServices(servicesForAnnouncer); err != nil {
 		return fmt.Errorf("failed to reload announcer: %w", err)
 	}
 

@@ -218,7 +218,10 @@ func (m *Balancer) updater(ctx context.Context) error {
 
 // updateBalancer processes pending events and applies them to the client.
 func (m *Balancer) updateBalancer(ctx context.Context) {
-	serviceEvents := m.announcer.FlushServiceEvents()
+	// Announcer events should be processed only after all load balancer events
+	// have been processed to prevent the service announce before it appears in
+	// the load balancer.
+	announceEvents := m.announcer.FlushServiceEvents()
 
 	// Process each event in the registry.
 	processed := m.events.Process(func(key key.Balancer, event *xevent.Event) error {
@@ -247,7 +250,9 @@ func (m *Balancer) updateBalancer(ctx context.Context) {
 		}
 	}
 
-	for service, event := range serviceEvents {
+	// Since all known balancer events have been processed, it's safe to process
+	// announce events.
+	for service, event := range announceEvents {
 		if err := m.announcer.UpdateService(service, event); err != nil {
 			m.log.Error(
 				"failed to process service announce event",

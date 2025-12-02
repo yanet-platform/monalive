@@ -11,31 +11,41 @@ import (
 )
 
 // Helper function to create a default service.
-func defaultService() key.Service {
-	return key.Service{Addr: netip.MustParseAddr("127.0.0.1"), Port: 80, Proto: "TCP"}
+func defaultService() (service key.Service, serviceWithGroup map[key.Service]string) {
+	service = key.Service{Addr: netip.MustParseAddr("127.0.0.1"), Port: 80, Proto: "TCP"}
+	serviceWithGroup = make(map[key.Service]string)
+	serviceWithGroup[service] = "default"
+	return service, serviceWithGroup
 }
 
 // Helper function to create a list of default services.
-func defaultServices() []key.Service {
-	return []key.Service{
+func defaultServices() (services []key.Service, servicesWithGroups map[key.Service]string) {
+	services = []key.Service{
 		{Addr: netip.MustParseAddr("127.0.0.1"), Port: 80, Proto: "TCP"},          // Service1
 		{Addr: netip.MustParseAddr("127.0.0.1"), Port: 443, Proto: "TCP"},         // Service2
 		{Addr: netip.MustParseAddr("2001:dead:beef::1"), Port: 80, Proto: "TCP"},  // Service3
 		{Addr: netip.MustParseAddr("2001:dead:beef::1"), Port: 443, Proto: "TCP"}, // Service4
 	}
+
+	servicesWithGroups = make(map[key.Service]string, len(services))
+	for _, service := range services {
+		servicesWithGroups[service] = "default"
+	}
+
+	return services, servicesWithGroups
 }
 
 // TestPrefix_ReloadServices_InitialReload tests the initial loading of services
 // into the prefix registry.
 func TestPrefix_ReloadServices_InitialReload(t *testing.T) {
-	services := defaultServices()
+	services, servicesWithGroups := defaultServices()
 	prefixRegistry := NewPrefixes()
-	prefixRegistry.ReloadServices(services)
+	prefixRegistry.ReloadServices(servicesWithGroups)
 
 	// Expected prefixes and their states after the initial reload.
 	prefixes := map[netip.Prefix]*prefixState{
-		netip.MustParsePrefix("127.0.0.1/32"):          newState(services[:2]),
-		netip.MustParsePrefix("2001:dead:beef::1/128"): newState(services[2:]),
+		netip.MustParsePrefix("127.0.0.1/32"):          newState("default", services[:2]),
+		netip.MustParsePrefix("2001:dead:beef::1/128"): newState("default", services[2:]),
 	}
 	assert.Equal(t, prefixes, prefixRegistry.prefixes)
 }
@@ -43,11 +53,11 @@ func TestPrefix_ReloadServices_InitialReload(t *testing.T) {
 // TestPrefix_EnableDisabledService tests enabling a service that was previously
 // disabled.
 func TestPrefix_EnableDisabledService(t *testing.T) {
-	service := defaultService()
+	service, serviceWithGroup := defaultService()
 	prefix := service.Prefix()
 
 	prefixRegistry := NewPrefixes()
-	prefixRegistry.ReloadServices([]key.Service{service})
+	prefixRegistry.ReloadServices(serviceWithGroup)
 
 	// Enable the service and check that it's added to the active services.
 	require.NoError(t, prefixRegistry.UpdateService(service, ServiceEnabled))
@@ -59,11 +69,11 @@ func TestPrefix_EnableDisabledService(t *testing.T) {
 // TestPrefix_DisableDisabledService tests disabling a service that is already
 // disabled.
 func TestPrefix_DisableDisabledService(t *testing.T) {
-	service := defaultService()
+	service, serviceWithGroup := defaultService()
 	prefix := service.Prefix()
 
 	prefixRegistry := NewPrefixes()
-	prefixRegistry.ReloadServices([]key.Service{service})
+	prefixRegistry.ReloadServices(serviceWithGroup)
 
 	// Disable the service and check that it has no active services.
 	require.NoError(t, prefixRegistry.UpdateService(service, ServiceDisabled))
@@ -74,11 +84,11 @@ func TestPrefix_DisableDisabledService(t *testing.T) {
 // TestPrefix_EnableEnabledService tests enabling a service that is already
 // enabled.
 func TestPrefix_EnableEnabledService(t *testing.T) {
-	service := defaultService()
+	service, serviceWithGroup := defaultService()
 	prefix := service.Prefix()
 
 	prefixRegistry := NewPrefixes()
-	prefixRegistry.ReloadServices([]key.Service{service})
+	prefixRegistry.ReloadServices(serviceWithGroup)
 
 	// Enable the service twice and check that it remains active.
 	require.NoError(t, prefixRegistry.UpdateService(service, ServiceEnabled))
@@ -92,10 +102,10 @@ func TestPrefix_EnableEnabledService(t *testing.T) {
 // TestPrefix_DisableEnabledService tests disabling a service that is currently
 // enabled.
 func TestPrefix_DisableEnabledService(t *testing.T) {
-	service := defaultService()
+	service, serviceWithGroup := defaultService()
 	prefix := service.Prefix()
 	prefixRegistry := NewPrefixes()
-	prefixRegistry.ReloadServices([]key.Service{service})
+	prefixRegistry.ReloadServices(serviceWithGroup)
 
 	// Enable the service first, then disable it, and check that there are no
 	// active services.
@@ -110,9 +120,9 @@ func TestPrefix_DisableEnabledService(t *testing.T) {
 // TestPrefix_EnableNotExistingService tests enabling a service that doesn't
 // exist in the prefix registry.
 func TestPrefix_EnableNotExistingService(t *testing.T) {
-	service := defaultService()
+	_, serviceWithGroup := defaultService()
 	prefixRegistry := NewPrefixes()
-	prefixRegistry.ReloadServices([]key.Service{service})
+	prefixRegistry.ReloadServices(serviceWithGroup)
 
 	// Try to enable a non-existing service and expect an error.
 	notExistingService := key.Service{Addr: netip.MustParseAddr("127.0.0.2"), Port: 80, Proto: "TCP"}
@@ -123,23 +133,23 @@ func TestPrefix_EnableNotExistingService(t *testing.T) {
 // TestPrefix_ReloadServices_UpdateReload_AddServices_WithoutAnnounces tests
 // reloading services with additional services without triggering announces.
 func TestPrefix_ReloadServices_UpdateReload_AddServices_WithoutAnnounces(t *testing.T) {
-	services := defaultServices()
+	services, servicesWithGroups := defaultServices()
 	prefixRegistry := NewPrefixes()
-	prefixRegistry.ReloadServices(services)
+	prefixRegistry.ReloadServices(servicesWithGroups)
 
 	// Adding a new service to an existing prefix and a new service to a new
 	// prefix.
-	services = append(
-		services,
-		key.Service{Addr: netip.MustParseAddr("127.0.0.1"), Port: 8080, Proto: "TCP"},       // adding service for existing prefix
-		key.Service{Addr: netip.MustParseAddr("2001:dead:beef::2"), Port: 80, Proto: "TCP"}, // adding service for new prefix
-	)
-	prefixRegistry.ReloadServices(services)
+	newService1 := key.Service{Addr: netip.MustParseAddr("127.0.0.1"), Port: 8080, Proto: "TCP"}       // service for existing prefix
+	newService2 := key.Service{Addr: netip.MustParseAddr("2001:dead:beef::2"), Port: 80, Proto: "TCP"} // service for new prefix
+	servicesWithGroups[newService1] = "default"
+	servicesWithGroups[newService2] = "default"
+	services = append(services, newService1, newService2)
+	prefixRegistry.ReloadServices(servicesWithGroups)
 
 	prefixes := map[netip.Prefix]*prefixState{
-		netip.MustParsePrefix("127.0.0.1/32"):          newState([]key.Service{services[0], services[1], services[4]}),
-		netip.MustParsePrefix("2001:dead:beef::1/128"): newState([]key.Service{services[2], services[3]}),
-		netip.MustParsePrefix("2001:dead:beef::2/128"): newState([]key.Service{services[5]}),
+		netip.MustParsePrefix("127.0.0.1/32"):          newState("default", []key.Service{services[0], services[1], services[4]}),
+		netip.MustParsePrefix("2001:dead:beef::1/128"): newState("default", []key.Service{services[2], services[3]}),
+		netip.MustParsePrefix("2001:dead:beef::2/128"): newState("default", []key.Service{services[5]}),
 	}
 	assert.Equal(t, prefixes, prefixRegistry.prefixes)
 }
@@ -147,20 +157,21 @@ func TestPrefix_ReloadServices_UpdateReload_AddServices_WithoutAnnounces(t *test
 // TestPrefix_ReloadServices_UpdateReload_RemoveServices_WithoutAnnounces tests
 // reloading services with some removed without triggering announces.
 func TestPrefix_ReloadServices_UpdateReload_RemoveServices_WithoutAnnounces(t *testing.T) {
-	services := defaultServices()
+	services, servicesWithGroups := defaultServices()
 	prefixRegistry := NewPrefixes()
-	prefixRegistry.ReloadServices(services)
+	prefixRegistry.ReloadServices(servicesWithGroups)
 
 	// Check that quorum equals the number of services for prefix.
 	assert.Equal(t, 2, prefixRegistry.prefixes[netip.MustParsePrefix("127.0.0.1/32")].quorum)
 
 	// Remove all but one service and reload the registry, then check the
 	// updated prefixes.
-	services = []key.Service{services[0]} // Keep only Service1
-	prefixRegistry.ReloadServices(services)
+	services = services[:1]                                             // keep only Service1
+	servicesWithGroups = map[key.Service]string{services[0]: "default"} // keep only Service1
+	prefixRegistry.ReloadServices(servicesWithGroups)
 
 	prefixes := map[netip.Prefix]*prefixState{
-		netip.MustParsePrefix("127.0.0.1/32"): newState(services),
+		netip.MustParsePrefix("127.0.0.1/32"): newState("default", services),
 	}
 	assert.Equal(t, prefixes, prefixRegistry.prefixes)
 	assert.Equal(t, 1, prefixRegistry.prefixes[netip.MustParsePrefix("127.0.0.1/32")].quorum)
@@ -169,9 +180,9 @@ func TestPrefix_ReloadServices_UpdateReload_RemoveServices_WithoutAnnounces(t *t
 // TestPrefix_Announce_Enable tests enabling services and verifying that the
 // prefix becomes ready.
 func TestPrefix_Announce_Enable(t *testing.T) {
-	services := defaultServices()
+	services, servicesWithGroups := defaultServices()
 	prefixRegistry := NewPrefixes()
-	prefixRegistry.ReloadServices(services)
+	prefixRegistry.ReloadServices(servicesWithGroups)
 
 	// Enable services and check that the prefix status becomes Ready.
 	prefix := services[0].Prefix()
@@ -185,9 +196,9 @@ func TestPrefix_Announce_Enable(t *testing.T) {
 // TestPrefix_Announce_Disable tests disabling services and verifying that the
 // prefix becomes unready.
 func TestPrefix_Announce_Disable(t *testing.T) {
-	services := defaultServices()
+	services, servicesWithGroups := defaultServices()
 	prefixRegistry := NewPrefixes()
-	prefixRegistry.ReloadServices(services)
+	prefixRegistry.ReloadServices(servicesWithGroups)
 
 	// Enable services first, then disable one and check that the prefix status
 	// becomes Unready.
@@ -203,9 +214,9 @@ func TestPrefix_Announce_Disable(t *testing.T) {
 // TestPrefix_ReloadServices_UpdateReload_AddServices_WithAnnounces tests adding
 // new services to the registry with announces.
 func TestPrefix_ReloadServices_UpdateReload_AddServices_WithAnnounces(t *testing.T) {
-	services := defaultServices()
+	services, servicesWithGroups := defaultServices()
 	prefixRegistry := NewPrefixes()
-	prefixRegistry.ReloadServices(services)
+	prefixRegistry.ReloadServices(servicesWithGroups)
 
 	// Enable services and check that the prefix status is Ready.
 	prefix := services[0].Prefix()
@@ -215,11 +226,9 @@ func TestPrefix_ReloadServices_UpdateReload_AddServices_WithAnnounces(t *testing
 
 	// Add a new service for the existing prefix, reload the registry, and check
 	// that the prefix status becomes Unready.
-	services = append(
-		services,
-		key.Service{Addr: netip.MustParseAddr("127.0.0.1"), Port: 8080, Proto: "TCP"}, // adding service for existing prefix
-	)
-	prefixRegistry.ReloadServices(services)
+	newService := key.Service{Addr: netip.MustParseAddr("127.0.0.1"), Port: 8080, Proto: "TCP"}
+	servicesWithGroups[newService] = "default"
+	prefixRegistry.ReloadServices(servicesWithGroups)
 
 	assert.Equal(t, Unready, prefixRegistry.prefixes[prefix].Status())
 }
@@ -230,17 +239,17 @@ func TestPrefix_ReloadServices_UpdateReload_AddServices_WithAnnounces(t *testing
 // one of the services is removed, and it is checked that the prefix status
 // remains "Ready" (since one service is still active).
 func TestPrefix_ReloadServices_UpdateReload_RemoveEnabledService_WithAnnounces(t *testing.T) {
-	services := defaultServices()
+	services, servicesWithGroups := defaultServices()
 	prefixRegistry := NewPrefixes()
-	prefixRegistry.ReloadServices(services)
+	prefixRegistry.ReloadServices(servicesWithGroups)
 
 	prefix := services[0].Prefix()
 	require.NoError(t, prefixRegistry.UpdateService(services[0], ServiceEnabled))
 	require.NoError(t, prefixRegistry.UpdateService(services[1], ServiceEnabled))
 	assert.Equal(t, Ready, prefixRegistry.prefixes[prefix].Status())
 
-	services = []key.Service{services[0]} // Keep only Service1
-	prefixRegistry.ReloadServices(services)
+	delete(servicesWithGroups, services[1]) // keep only Service1
+	prefixRegistry.ReloadServices(servicesWithGroups)
 
 	assert.Equal(t, Ready, prefixRegistry.prefixes[prefix].Status())
 }
@@ -251,17 +260,17 @@ func TestPrefix_ReloadServices_UpdateReload_RemoveEnabledService_WithAnnounces(t
 // enabled, and the second is disabled. After removing the disabled service, the
 // status of the prefix is expected to change to "Ready".
 func TestPrefix_ReloadServices_UpdateReload_RemoveDisabledService_WithAnnounces(t *testing.T) {
-	services := defaultServices()
+	services, servicesWithGroups := defaultServices()
 	prefixRegistry := NewPrefixes()
-	prefixRegistry.ReloadServices(services)
+	prefixRegistry.ReloadServices(servicesWithGroups)
 
 	prefix := services[0].Prefix()
 	require.NoError(t, prefixRegistry.UpdateService(services[0], ServiceEnabled))
 	require.NoError(t, prefixRegistry.UpdateService(services[1], ServiceDisabled))
 	assert.Equal(t, Unready, prefixRegistry.prefixes[prefix].Status())
 
-	services = []key.Service{services[0]} // Keep only Service1
-	prefixRegistry.ReloadServices(services)
+	delete(servicesWithGroups, services[1]) // keep only Service1
+	prefixRegistry.ReloadServices(servicesWithGroups)
 
 	assert.Equal(t, Ready, prefixRegistry.prefixes[prefix].Status())
 }
@@ -270,9 +279,9 @@ func TestPrefix_ReloadServices_UpdateReload_RemoveDisabledService_WithAnnounces(
 // when services are updated. The test verifies that after enabling two
 // services, the expected event is recorded in the prefix registry.
 func TestPrefix_UpdateServices_Event(t *testing.T) {
-	services := defaultServices()
+	services, servicesWithGroups := defaultServices()
 	prefixRegistry := NewPrefixes()
-	prefixRegistry.ReloadServices(services)
+	prefixRegistry.ReloadServices(servicesWithGroups)
 
 	require.NoError(t, prefixRegistry.UpdateService(services[0], ServiceEnabled))
 	assert.Empty(t, prefixRegistry.Events())
@@ -280,8 +289,8 @@ func TestPrefix_UpdateServices_Event(t *testing.T) {
 	require.NoError(t, prefixRegistry.UpdateService(services[1], ServiceEnabled))
 
 	prefix := services[0].Prefix()
-	expectedEvents := map[netip.Prefix]PrefixStatus{
-		prefix: Ready,
+	expectedEvents := map[PrefixKey]PrefixStatus{
+		{prefix, "default"}: Ready,
 	}
 	assert.Equal(t, expectedEvents, prefixRegistry.Events())
 }
@@ -290,26 +299,27 @@ func TestPrefix_UpdateServices_Event(t *testing.T) {
 // ensures that when all enabled services for a prefix are removed, the prefix
 // is also removed from the registry, and appropriate events are generated.
 func TestPrefix_ReloadServices_UpdateReload_RemoveAllEnabledServicesForPrefix_WithAnnounces(t *testing.T) {
-	services := defaultServices()
+	services, servicesWithGroups := defaultServices()
 	prefixRegistry := NewPrefixes()
-	prefixRegistry.ReloadServices(services)
+	prefixRegistry.ReloadServices(servicesWithGroups)
 
 	prefix := services[0].Prefix()
 	require.NoError(t, prefixRegistry.UpdateService(services[0], ServiceEnabled))
 	require.NoError(t, prefixRegistry.UpdateService(services[1], ServiceEnabled))
 	assert.Equal(t, Ready, prefixRegistry.prefixes[prefix].Status())
-	expectedEvents := map[netip.Prefix]PrefixStatus{
-		prefix: Ready,
+	expectedEvents := map[PrefixKey]PrefixStatus{
+		{prefix, "default"}: Ready,
 	}
 	assert.Equal(t, expectedEvents, prefixRegistry.Events())
 
-	services = []key.Service{services[2], services[3]} // Keep only Service3 and Service4
-	prefixRegistry.ReloadServices(services)
+	delete(servicesWithGroups, services[0]) // keep only Service3 and Service4
+	delete(servicesWithGroups, services[1])
+	prefixRegistry.ReloadServices(servicesWithGroups)
 
 	assert.NotContains(t, prefixRegistry.prefixes, prefix)
 
-	expectedEvents = map[netip.Prefix]PrefixStatus{
-		prefix: Unready,
+	expectedEvents = map[PrefixKey]PrefixStatus{
+		{prefix, "default"}: Unready,
 	}
 	assert.Equal(t, expectedEvents, prefixRegistry.Events())
 }
