@@ -11,6 +11,7 @@ import (
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
+	"google.golang.org/protobuf/encoding/protojson"
 
 	monalivepb "github.com/yanet-platform/monalive/gen/manager"
 )
@@ -80,8 +81,18 @@ func (m *Server) runGRPCServer() error {
 }
 
 func (m *Server) runHTTPServer(ctx context.Context) error {
+	// Create a custom JSON marshaler for gRPC-Gateway to serialize JSON
+	// responses using the original field names from the .proto definition
+	// (snake_case) instead of camelCase.
+	customMarshaler := &runtime.JSONPb{
+		MarshalOptions: protojson.MarshalOptions{
+			UseProtoNames:   true,
+			EmitUnpopulated: true, // include zero values in JSON response
+		},
+	}
+
 	// Registers the MonaliveManagerHandlerServer to handle the HTTP requests.
-	mux := runtime.NewServeMux(runtime.WithMarshalerOption("application/protobuf", &runtime.ProtoMarshaller{}))
+	mux := runtime.NewServeMux(runtime.WithMarshalerOption(runtime.MIMEWildcard, customMarshaler))
 	if err := monalivepb.RegisterMonaliveManagerHandlerServer(ctx, mux, m.manager); err != nil {
 		return fmt.Errorf("failed to register handler: %w", err)
 	}
