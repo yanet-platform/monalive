@@ -77,20 +77,24 @@ func (m *Manager) Reload(ctx context.Context, _ *monalivepb.ReloadRequest) (*mon
 
 	config, err := m.loadConfig()
 	if err != nil {
+		m.logger.Error("failed to load services configuration", slog.Any("error", err))
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
 	if err := config.Prepare(); err != nil {
+		m.logger.Error("failed to prepare services configuration", slog.Any("error", err))
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
 	if err := m.core.Reload(config); err != nil {
+		m.logger.Error("failed to process reload", slog.Any("error", err))
 		return nil, status.Error(codes.Internal, fmt.Sprintf("failed to process reload: %v", err))
 	}
 
 	m.updateTS = time.Now()
 
 	if err := config.Dump(m.config.Services.DumpPath); err != nil {
+		m.logger.Error("failed to dump services configuration", slog.Any("error", err))
 		return nil, status.Error(codes.Internal, fmt.Sprintf("failed to dump services config: %v", err))
 	}
 
