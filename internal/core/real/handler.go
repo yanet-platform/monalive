@@ -1,7 +1,7 @@
 package real
 
 import (
-	"log/slog"
+	log "go.uber.org/zap"
 
 	"github.com/yanet-platform/monalive/internal/types/weight"
 	"github.com/yanet-platform/monalive/internal/types/xevent"
@@ -132,7 +132,11 @@ func (m *Real) enableReal() (changed bool) {
 	m.state.Inhibited = false
 	// Increment the transition counter to track status changes.
 	m.state.Transitions++
-	m.log.Info("real enabled", slog.Int("weight", int(m.state.Weight)), slog.String("event_type", "real update"))
+	m.log.Info(
+		"real enabled",
+		log.Int("weight", int(m.state.Weight)),
+		log.String("event_type", "real update"),
+	)
 	return true
 }
 
@@ -175,7 +179,7 @@ func (m *Real) disableReal(eventType xevent.Type) (changed bool) {
 	m.state.Alive = false
 	// Increment the transition counter to track status changes.
 	m.state.Transitions++
-	m.log.Info("real disabled", slog.String("event_type", "real update"))
+	m.log.Info("real disabled", log.String("event_type", "real update"))
 	return true
 }
 
@@ -192,8 +196,8 @@ func (m *Real) updateWeight(weight weight.Weight) (changed bool) {
 	m.state.Weight = weight
 	m.log.Info(
 		"real weight changed",
-		slog.Int("weight", int(m.state.Weight)),
-		slog.String("event_type", "real update"),
+		log.Int("weight", int(m.state.Weight)),
+		log.String("event_type", "real update"),
 	)
 	return true
 }

@@ -11,14 +11,14 @@ import (
 	"github.com/yanet-platform/monalive/internal/balancer"
 	"github.com/yanet-platform/monalive/internal/balancer/yanet"
 	"github.com/yanet-platform/monalive/internal/core"
-	"github.com/yanet-platform/monalive/internal/monitoring/xlog"
+	"github.com/yanet-platform/monalive/internal/monitoring/logger"
 	"github.com/yanet-platform/monalive/internal/server"
 	"github.com/yanet-platform/monalive/internal/utils/exp"
 	"github.com/yanet-platform/monalive/pkg/checktun"
 )
 
 type Config struct {
-	Logger *xlog.Config `yaml:"logging"`
+	Logger *logger.Config `yaml:"logging"`
 
 	Balancer *balancer.Config `yaml:"balancer"`
 	YANET    *yanet.Config    `yaml:"yanet"`

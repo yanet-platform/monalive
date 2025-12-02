@@ -3,9 +3,10 @@ package real
 
 import (
 	"context"
-	"log/slog"
 	"slices"
 	"sync"
+
+	log "go.uber.org/zap"
 
 	"github.com/yanet-platform/monalive/internal/core/checker"
 	"github.com/yanet-platform/monalive/internal/types/key"
@@ -46,7 +47,7 @@ type Real struct {
 	reloadMu       sync.Mutex // to prevent concurrent config updates
 
 	shutdown *shutdown.Shutdown
-	log      *slog.Logger
+	log      *log.Logger
 }
 
 // State represents the current state of the real.
@@ -96,12 +97,12 @@ func WithActivationFunc(activation ActivationFunc) Option {
 }
 
 // New creates a new Real instance.
-func New(config *Config, handler xevent.Handler, logger *slog.Logger, opts ...Option) *Real {
+func New(config *Config, handler xevent.Handler, logger *log.Logger, opts ...Option) *Real {
 	logger = logger.With(
-		slog.String("real_ip", config.IP.String()),
-		slog.String("real_port", config.Port.String()),
+		log.String("real_ip", config.IP.String()),
+		log.String("real_port", config.Port.String()),
 	)
-	defer logger.Info("real created", slog.String("event_type", "real update"))
+	defer logger.Info("real created", log.String("event_type", "real update"))
 
 	real := &Real{
 		config:       config,
@@ -133,8 +134,8 @@ func (m *Real) Run(ctx context.Context) {
 		return
 	}
 
-	m.log.Info("running real", slog.String("event_type", "real update"))
-	defer m.log.Info("real stopped", slog.String("event_type", "real update"))
+	m.log.Info("running real", log.String("event_type", "real update"))
+	defer m.log.Info("real stopped", log.String("event_type", "real update"))
 
 	// Reload to apply initial checkers configuration.
 	go func() {
@@ -210,7 +211,7 @@ func (m *Real) reload(config *Config) {
 	if m.config.ForwardingMethod != config.ForwardingMethod {
 		m.log.Info(
 			"forwarding method changed, force reload checkers",
-			slog.String("event_type", "real update"),
+			log.String("event_type", "real update"),
 		)
 		forceReload = true
 	}

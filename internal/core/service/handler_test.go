@@ -4,10 +4,10 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	log "go.uber.org/zap"
 
 	"github.com/yanet-platform/monalive/internal/announcer"
 	"github.com/yanet-platform/monalive/internal/balancer"
-	"github.com/yanet-platform/monalive/internal/monitoring/xlog"
 	"github.com/yanet-platform/monalive/internal/types/weight"
 	"github.com/yanet-platform/monalive/internal/types/xevent"
 )
@@ -19,9 +19,9 @@ func defaultService() *Service {
 		Quorum:     1,
 		Hysteresis: 0,
 	}
-	announcer := announcer.New(&announcer.Config{}, nil, xlog.NewNopLogger())
-	balancer := balancer.New(&balancer.Config{}, nil, announcer, xlog.NewNopLogger())
-	return New(serviceConfig, announcer, balancer, xlog.NewNopLogger())
+	announcer := announcer.New(&announcer.Config{}, nil, log.NewNop())
+	balancer := balancer.New(&balancer.Config{}, nil, announcer, log.NewNop())
+	return New(serviceConfig, announcer, balancer, log.NewNop())
 }
 
 // enableRealEvent creates and returns an Event that simulates enabling a real

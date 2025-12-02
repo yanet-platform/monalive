@@ -6,8 +6,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	log "go.uber.org/zap"
 
-	"github.com/yanet-platform/monalive/internal/monitoring/xlog"
 	"github.com/yanet-platform/monalive/internal/types/port"
 	"github.com/yanet-platform/monalive/internal/types/weight"
 	"github.com/yanet-platform/monalive/internal/types/xevent"
@@ -40,7 +40,7 @@ func defaultReal(weight weight.Weight, handler xevent.Handler) *Real {
 		Weight:           weight,
 	}
 
-	return New(config, handler, xlog.NewNopLogger())
+	return New(config, handler, log.NewNop())
 }
 
 // WithInhibitOnFailure enables the InhibitOnFailure option in the Real's

@@ -8,9 +8,9 @@ package balancer
 
 import (
 	"context"
-	"log/slog"
 	"time"
 
+	log "go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/yanet-platform/monalive/internal/announcer"
@@ -44,11 +44,11 @@ type Balancer struct {
 	state     *State                                       // keeps balancer state
 	events    *event.Registry[key.Balancer, *xevent.Event] // stores events to the balancer
 	shutdown  *shutdown.Shutdown                           // manages graceful shutdown
-	log       *slog.Logger
+	log       *log.Logger
 }
 
 // New creates a new Balancer instance.
-func New(config *Config, client LoadBalancerClient, announcer *announcer.Announcer, logger *slog.Logger) *Balancer {
+func New(config *Config, client LoadBalancerClient, announcer *announcer.Announcer, logger *log.Logger) *Balancer {
 	var state *State
 	// If the client implements the Stater interface, initialize the state.
 	if _, implements := client.(Stater); implements {
@@ -165,7 +165,7 @@ func (m *Balancer) stater(ctx context.Context) error {
 	// Initial state sync.
 	state, err := client.GetState(ctx)
 	if err != nil {
-		m.log.Error("failed to get balancer state", slog.Any("error", err))
+		m.log.Error("failed to get balancer state", log.Error(err))
 	}
 	// Update the internal state with the fetched state.
 	m.state.Update(state)
@@ -184,7 +184,7 @@ func (m *Balancer) stater(ctx context.Context) error {
 		case <-updateTimer.C:
 			state, err := client.GetState(ctx)
 			if err != nil {
-				m.log.Error("failed to get balancer state", slog.Any("error", err))
+				m.log.Error("failed to get balancer state", log.Error(err))
 				continue
 			}
 			// Update the internal state with the new state.
@@ -236,8 +236,8 @@ func (m *Balancer) updateBalancer(ctx context.Context) {
 		if err != nil {
 			m.log.Error(
 				"failed to update yanet real configuration",
-				slog.Any("error", err),
-				slog.String("event_type", "real handler"),
+				log.Error(err),
+				log.String("event_type", "real handler"),
 			)
 		}
 		return err
@@ -246,7 +246,7 @@ func (m *Balancer) updateBalancer(ctx context.Context) {
 	// If any events were processed, flush the changes to the client.
 	if processed > 0 {
 		if err := m.client.Flush(ctx); err != nil {
-			m.log.Error("failed to flush balancer", slog.Any("error", err))
+			m.log.Error("failed to flush balancer", log.Error(err))
 		}
 	}
 
@@ -256,11 +256,11 @@ func (m *Balancer) updateBalancer(ctx context.Context) {
 		if err := m.announcer.UpdateService(service, event); err != nil {
 			m.log.Error(
 				"failed to process service announce event",
-				slog.String("ip", service.Addr.String()),
-				slog.String("port", service.Port.String()),
-				slog.String("proto", service.Proto),
-				slog.Any("error", err),
-				slog.String("event_type", "service handler"),
+				log.String("ip", service.Addr.String()),
+				log.String("port", service.Port.String()),
+				log.String("proto", service.Proto),
+				log.Error(err),
+				log.String("event_type", "service handler"),
 			)
 		}
 	}

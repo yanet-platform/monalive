@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
-	"log/slog"
 	"math"
 	"net/netip"
 	"sync"
@@ -14,6 +13,8 @@ import (
 	"github.com/google/gopacket/layers"
 	"github.com/yanet-platform/go-nfqueue/v2"
 	"github.com/yanet-platform/netlink"
+	log "go.uber.org/zap"
+
 	"golang.org/x/net/ipv4"
 	"golang.org/x/net/ipv6"
 )
@@ -66,11 +67,11 @@ type CheckTun struct {
 
 	sockets map[int]map[int]int
 
-	logger *slog.Logger
+	logger *log.Logger
 }
 
-func New(config Config, logger *slog.Logger) (*CheckTun, error) {
-	logger = logger.With(slog.String("event_type", "yanet"))
+func New(config Config, logger *log.Logger) (*CheckTun, error) {
+	logger = logger.With(log.String("event_type", "checktun"))
 
 	checkTun := &CheckTun{
 		config:      config,
@@ -142,7 +143,7 @@ func (c *CheckTun) Run(ctx context.Context) error {
 			}
 		}
 
-		c.logger.Error("could not receive message", slog.Any("error", err))
+		c.logger.Error("could not receive message", log.Error(err))
 		return 0
 	})
 	if err != nil {
@@ -154,7 +155,7 @@ func (c *CheckTun) Run(ctx context.Context) error {
 
 func (c *CheckTun) Stop() {
 	if err := c.nf.Close(); err != nil {
-		c.logger.Error("check tun close", slog.Any("error", err))
+		c.logger.Error("check tun close", log.Error(err))
 	}
 }
 
@@ -321,7 +322,7 @@ func (c *CheckTun) nfqueueHandler(a nfqueue.Attribute) int {
 	}
 
 	if err := c.dropPacket(*a.PacketID); err != nil {
-		c.logger.Error("failed to drop packet", slog.Any("error", err))
+		c.logger.Error("failed to drop packet", log.Error(err))
 	}
 
 	if a.Mark != nil && *a.Mark == math.MaxUint32 {
@@ -330,7 +331,7 @@ func (c *CheckTun) nfqueueHandler(a nfqueue.Attribute) int {
 		}
 
 		if err := c.encapsulatePacket(*a.Payload); err != nil {
-			c.logger.Error("failed to encapsulate packet", slog.Any("error", err))
+			c.logger.Error("failed to encapsulate packet", log.Error(err))
 		}
 	}
 

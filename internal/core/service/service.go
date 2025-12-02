@@ -5,8 +5,9 @@ package service
 
 import (
 	"context"
-	"log/slog"
 	"sync"
+
+	log "go.uber.org/zap"
 
 	"github.com/yanet-platform/monalive/internal/announcer"
 	"github.com/yanet-platform/monalive/internal/balancer"
@@ -37,7 +38,7 @@ type Service struct {
 	eventsWG sync.WaitGroup // to manage goroutines handling events
 
 	shutdown *shutdown.Shutdown
-	log      *slog.Logger
+	log      *log.Logger
 }
 
 // State represents the current state of the service.
@@ -49,13 +50,13 @@ type State struct {
 }
 
 // New creates a new Service instance.
-func New(config *Config, announcer *announcer.Announcer, balancer *balancer.Balancer, logger *slog.Logger) *Service {
+func New(config *Config, announcer *announcer.Announcer, balancer *balancer.Balancer, logger *log.Logger) *Service {
 	logger = logger.With(
-		slog.String("virtual_ip", config.VIP.String()),
-		slog.String("port", config.VPort.String()),
-		slog.String("protocol", config.Protocol),
+		log.String("virtual_ip", config.VIP.String()),
+		log.String("port", config.VPort.String()),
+		log.String("protocol", config.Protocol),
 	)
-	defer logger.Info("service created", slog.String("event_type", "service update"))
+	defer logger.Info("service created", log.String("event_type", "service update"))
 
 	return &Service{
 		config: config,
@@ -78,8 +79,8 @@ func New(config *Config, announcer *announcer.Announcer, balancer *balancer.Bala
 // initial configuration for the reals. The service will continue running until
 // its Stop method is invoked.
 func (m *Service) Run(ctx context.Context) {
-	m.log.Info("running service", slog.String("event_type", "service update"))
-	defer m.log.Info("service stopped", slog.String("event_type", "service update"))
+	m.log.Info("running service", log.String("event_type", "service update"))
+	defer m.log.Info("service stopped", log.String("event_type", "service update"))
 
 	// Reload to apply initial reals configuration.
 	go m.Reload(m.config)

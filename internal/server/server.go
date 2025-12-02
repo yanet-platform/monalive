@@ -3,12 +3,12 @@ package server
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"net"
 	"net/http"
 	"time"
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
+	log "go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
@@ -24,13 +24,13 @@ type Server struct {
 	manager    monalivepb.MonaliveManagerServer
 	grpcServer *grpc.Server
 	httpServer *http.Server
-	logger     *slog.Logger
+	logger     *log.Logger
 }
 
 // New creates a new Server instance with the given configuration and gRPC
 // manager. It initializes both gRPC and HTTP servers and registers necessary
 // services.
-func New(config *Config, manager monalivepb.MonaliveManagerServer, logger *slog.Logger) *Server {
+func New(config *Config, manager monalivepb.MonaliveManagerServer, logger *log.Logger) *Server {
 	// Create a new gRPC server and register the MonaliveManagerServer
 	// implementation.
 	gRPCServer := grpc.NewServer()

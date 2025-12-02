@@ -2,8 +2,9 @@ package checker
 
 import (
 	"errors"
-	"log/slog"
 	"time"
+
+	log "go.uber.org/zap"
 
 	"github.com/yanet-platform/monalive/internal/core/checker/check"
 	"github.com/yanet-platform/monalive/internal/types/weight"
@@ -152,9 +153,9 @@ func (m *Checker) failedAttempt(opErr error) (exceeded bool) {
 	// prevent verbose logging.
 	m.log.Error(
 		"check failed",
-		slog.Any("error", opErr),
-		slog.Int("attempt", m.state.FailedAttempts),
-		slog.String("event_type", "checker update"),
+		log.Error(opErr),
+		log.Int("attempt", m.state.FailedAttempts),
+		log.String("event_type", "checker update"),
 	)
 	return m.state.FailedAttempts > m.config.GetRetries()
 }

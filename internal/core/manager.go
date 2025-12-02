@@ -3,9 +3,9 @@ package core
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"time"
 
+	log "go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -42,12 +42,12 @@ type Manager struct {
 	core     *Core        // core instance that managing all health checking logic
 	loader   ConfigLoader // this function is used to load the services configuration
 	updateTS time.Time    // last configuration update timestamp
-	logger   *slog.Logger
+	logger   *log.Logger
 }
 
 // NewManager creates a new Manager instance. It selects the appropriate
 // configuration loader based on the format specified in the config.
-func NewManager(config *ManagerConfig, core *Core, logger *slog.Logger) (*Manager, error) {
+func NewManager(config *ManagerConfig, core *Core, logger *log.Logger) (*Manager, error) {
 	var loader ConfigLoader
 	switch format := config.Services.Format; format {
 	case KeepalivedFormat:
@@ -74,31 +74,31 @@ func NewManager(config *ManagerConfig, core *Core, logger *slog.Logger) (*Manage
 // Implements the Reload method defined in monalivepb.
 func (m *Manager) Reload(ctx context.Context, _ *monalivepb.ReloadRequest) (*monalivepb.ReloadResponse, error) {
 	reqID, _ := requestid.FromContext(ctx)
-	logger := m.logger.With(slog.Any("request_id", reqID))
+	logger := m.logger.With(log.String("request_id", string(reqID)))
 
-	logger.Info("starting reload services configuration", slog.Any("request_id", reqID))
-	defer logger.Info("reload services configuration finished", slog.Any("request_id", reqID))
+	logger.Info("starting reload services configuration")
+	defer logger.Info("reload services configuration finished")
 
 	config, err := m.loadConfig()
 	if err != nil {
-		logger.Error("failed to load services configuration", slog.Any("error", err))
+		logger.Error("failed to load services configuration", log.Error(err))
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
 	if err := config.Prepare(); err != nil {
-		logger.Error("failed to prepare services configuration", slog.Any("error", err))
+		logger.Error("failed to prepare services configuration", log.Error(err))
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
 	if err := m.core.Reload(config); err != nil {
-		logger.Error("failed to process reload", slog.Any("error", err))
+		logger.Error("failed to process reload", log.Error(err))
 		return nil, status.Error(codes.Internal, fmt.Sprintf("failed to process reload: %v", err))
 	}
 
 	m.updateTS = time.Now()
 
 	if err := config.Dump(m.config.Services.DumpPath); err != nil {
-		logger.Error("failed to dump services configuration", slog.Any("error", err))
+		logger.Error("failed to dump services configuration", log.Error(err))
 		return nil, status.Error(codes.Internal, fmt.Sprintf("failed to dump services config: %v", err))
 	}
 

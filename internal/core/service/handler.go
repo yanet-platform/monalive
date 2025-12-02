@@ -1,7 +1,7 @@
 package service
 
 import (
-	"log/slog"
+	log "go.uber.org/zap"
 
 	"github.com/yanet-platform/monalive/internal/announcer"
 	"github.com/yanet-platform/monalive/internal/types/weight"
@@ -92,11 +92,11 @@ func (m *Service) updateAnnounce() (changed bool) {
 	newServiceState := m.quorumState()
 
 	m.log.Info("service alive update",
-		slog.String("service_state", newServiceState.String()),
-		slog.Bool("alive", m.state.Alive),
-		slog.Int("alive_count", m.state.RealsAlive),
-		slog.Int("weight", int(m.state.Weight)),
-		slog.String("event_type", "service update"),
+		log.String("service_state", newServiceState.String()),
+		log.Bool("alive", m.state.Alive),
+		log.Int("alive_count", m.state.RealsAlive),
+		log.Int("weight", int(m.state.Weight)),
+		log.String("event_type", "service update"),
 	)
 
 	// Enable or disable the service based on the new state.
@@ -128,9 +128,9 @@ func (m *Service) enableService() (changed bool) {
 
 	m.log.Info(
 		"service enabled",
-		slog.Int("quorum", m.config.Quorum),
-		slog.Int("hysteresis", m.config.Hysteresis),
-		slog.String("event_type", "service update"),
+		log.Int("quorum", m.config.Quorum),
+		log.Int("hysteresis", m.config.Hysteresis),
+		log.String("event_type", "service update"),
 	)
 	// Indicate that the state was changed.
 	return true
@@ -151,9 +151,9 @@ func (m *Service) disableService() (changed bool) {
 
 	m.log.Info(
 		"service disabled",
-		slog.Int("quorum", m.config.Quorum),
-		slog.Int("hysteresis", m.config.Hysteresis),
-		slog.String("event_type", "service update"),
+		log.Int("quorum", m.config.Quorum),
+		log.Int("hysteresis", m.config.Hysteresis),
+		log.String("event_type", "service update"),
 	)
 	// Indicate that the state was changed.
 	return true

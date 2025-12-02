@@ -8,11 +8,11 @@ package announcer
 import (
 	"errors"
 	"fmt"
-	"log/slog"
 	"net/netip"
 	"sync"
 	"time"
 
+	log "go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/yanet-platform/monalive/internal/types/key"
@@ -63,11 +63,11 @@ type Announcer struct {
 	serviceEventRegistry *event.Registry[key.Service, ServiceStatus] // stores service status updates using the service as a key
 
 	shutdown *shutdown.Shutdown // shutdown mechanism to handle graceful termination
-	log      *slog.Logger
+	log      *log.Logger
 }
 
 // New creates a new instance of Announcer.
-func New(config *Config, client Client, logger *slog.Logger) *Announcer {
+func New(config *Config, client Client, logger *log.Logger) *Announcer {
 	return &Announcer{
 		config:               config,
 		client:               client,
@@ -202,8 +202,8 @@ func (m *Announcer) updater() {
 				if err := m.client.ProcessBatch(group, events); err != nil {
 					m.log.Error(
 						"failed to sync announces state",
-						slog.String("group_name", group),
-						slog.Any("error", err),
+						log.String("group_name", group),
+						log.Error(err),
 					)
 				}
 			}
@@ -235,8 +235,8 @@ func (m *Announcer) stateRequestHandler() error {
 					// lifecycle of the worker.
 					m.log.Error(
 						"failed to handle state request",
-						slog.String("group_name", group),
-						slog.Any("error", err),
+						log.String("group_name", group),
+						log.Error(err),
 					)
 					continue
 				}
@@ -250,8 +250,8 @@ func (m *Announcer) stateRequestHandler() error {
 				if err := m.client.ProcessBatch(group, status); err != nil {
 					m.log.Error(
 						"failed to sync announces state",
-						slog.String("group_name", group),
-						slog.Any("error", err),
+						log.String("group_name", group),
+						log.Error(err),
 					)
 				}
 			}
@@ -283,8 +283,8 @@ func (m *Announcer) removeAll() {
 		if err := m.client.ProcessBatch(group, prefixesStatus); err != nil {
 			m.log.Error(
 				"failed to remove announces",
-				slog.String("group_name", group),
-				slog.Any("error", err),
+				log.String("group_name", group),
+				log.Error(err),
 			)
 		}
 	}

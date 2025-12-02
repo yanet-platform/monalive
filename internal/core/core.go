@@ -5,8 +5,9 @@ package core
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"sync"
+
+	log "go.uber.org/zap"
 
 	"github.com/yanet-platform/monalive/internal/announcer"
 	"github.com/yanet-platform/monalive/internal/balancer"
@@ -26,11 +27,11 @@ type Core struct {
 	servicesPool *workerpool.Pool
 
 	shutdown *shutdown.Shutdown
-	log      *slog.Logger
+	log      *log.Logger
 }
 
 // New creates a new Core instance.
-func New(announcer *announcer.Announcer, balancer *balancer.Balancer, logger *slog.Logger) *Core {
+func New(announcer *announcer.Announcer, balancer *balancer.Balancer, logger *log.Logger) *Core {
 	return &Core{
 		announcer: announcer,
 		balancer:  balancer,

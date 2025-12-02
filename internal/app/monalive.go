@@ -3,8 +3,8 @@ package app
 import (
 	"context"
 	"fmt"
-	"log/slog"
 
+	log "go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/yanet-platform/monalive/internal/announcer"
@@ -12,7 +12,6 @@ import (
 	"github.com/yanet-platform/monalive/internal/balancer"
 	"github.com/yanet-platform/monalive/internal/balancer/yanet"
 	"github.com/yanet-platform/monalive/internal/core"
-	"github.com/yanet-platform/monalive/internal/monitoring/xlog"
 	"github.com/yanet-platform/monalive/internal/server"
 	"github.com/yanet-platform/monalive/internal/utils/xtls"
 	"github.com/yanet-platform/monalive/pkg/checktun"
@@ -30,14 +29,14 @@ type Monalive struct {
 
 	server *server.Server
 
-	logger *slog.Logger
+	logger *log.Logger
 }
 
 // New creates a new instance of Monalive service.
-func New(config Config, logger *slog.Logger) (*Monalive, error) {
+func New(config Config, logger *log.Logger) (*Monalive, error) {
 	// Set the minimum TLS version from the configuration.
 	if err := xtls.SetTLSMinVersion(config.TLSMinVersion); err != nil {
-		logger.Warn("failed to set TLSMinVersion from config", slog.Any("error", err))
+		logger.Warn("failed to set TLSMinVersion from config", log.Error(err))
 	}
 
 	// Initialize the Bird announcer.
@@ -59,7 +58,7 @@ func New(config Config, logger *slog.Logger) (*Monalive, error) {
 	balancer := balancer.New(config.Balancer, yanetClient, announcer, logger)
 
 	// Initialize the check tunneler.
-	tunneler, err := checktun.New(config.Tunnel, xlog.NewNopLogger())
+	tunneler, err := checktun.New(config.Tunnel, logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create checktun: %w", err)
 	}
@@ -114,7 +113,7 @@ func (m *Monalive) Run(ctx context.Context) error {
 	})
 
 	if _, err := m.coreManager.Reload(ctx, nil); err != nil {
-		m.logger.Error("failed to reload core service", slog.Any("error", err))
+		m.logger.Error("failed to reload core service", log.Error(err))
 	}
 
 	// Handle graceful shutdown when the context is cancelled.

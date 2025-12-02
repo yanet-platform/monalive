@@ -6,9 +6,10 @@ package checker
 import (
 	"context"
 	"errors"
-	"log/slog"
 	"sync"
 	"time"
+
+	log "go.uber.org/zap"
 
 	"github.com/yanet-platform/monalive/internal/core/checker/check"
 	"github.com/yanet-platform/monalive/internal/scheduler"
@@ -40,7 +41,7 @@ type Checker struct {
 	eventsWG sync.WaitGroup // to manage goroutines handling events
 
 	shutdown *shutdown.Shutdown
-	log      *slog.Logger
+	log      *log.Logger
 }
 
 // State represents the current state of the Checker.
@@ -56,7 +57,7 @@ type State struct {
 }
 
 // New creates a new Checker instance.
-func New(config *Config, handler xevent.Handler, weight weight.Weight, forwardingData xnet.ForwardingData, logger *slog.Logger) *Checker {
+func New(config *Config, handler xevent.Handler, weight weight.Weight, forwardingData xnet.ForwardingData, logger *log.Logger) *Checker {
 	checker := &Checker{
 		config:   config,
 		handler:  handler,
@@ -98,9 +99,9 @@ func New(config *Config, handler xevent.Handler, weight weight.Weight, forwardin
 	// Enhance the logger with context-specific information like URI and meta
 	// information.
 	checker.log = logger.With(
-		slog.String("uri", uri),
-		slog.Int("fwmark", config.Net.FWMark),
-		slog.String("meta", meta),
+		log.String("uri", uri),
+		log.Int("fwmark", config.Net.FWMark),
+		log.String("meta", meta),
 	)
 
 	return checker
@@ -114,10 +115,10 @@ func (m *Checker) Run(ctx context.Context) {
 	scheduler := scheduler.New(m.config.Scheduler, scheduler.WithInitialDelay())
 	m.log.Info(
 		"running checker",
-		slog.Duration("delay", scheduler.InitialDelay()),
-		slog.String("event_type", "checker update"),
+		log.Duration("delay", scheduler.InitialDelay()),
+		log.String("event_type", "checker update"),
 	)
-	defer m.log.Info("checker stopped", slog.String("event_type", "checker update"))
+	defer m.log.Info("checker stopped", log.String("event_type", "checker update"))
 
 	// Preventively increment the event counter so that checker's Stop function
 	// doesn't complete until the shutdown event is handled properly.
@@ -183,7 +184,11 @@ func (m *Checker) Stop() {
 func (m *Checker) UpdateWeight(weight weight.Weight) {
 	m.stateMu.Lock()
 	defer m.stateMu.Unlock()
-	m.log.Info("updating weight", slog.Int("weight", int(weight)), slog.String("event_type", "checker update"))
+	m.log.Info(
+		"updating weight",
+		log.Int("weight", int(weight)),
+		log.String("event_type", "checker update"),
+	)
 	m.state.Weight = weight
 	m.state.ManualChanged = true
 }
