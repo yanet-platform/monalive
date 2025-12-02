@@ -213,11 +213,17 @@ func (m *HTTPCheck) getWeightFrom(response *http.Response, body []byte) weight.W
 			return weight.Omitted
 		}
 	} else {
+		// Get only the first line of the body.
+		firstBodyLine, _, _ := bytes.Cut(body, []byte("\n"))
+
+		// Cut the weight prefix from the line if so.
 		var found bool
-		if weightBuf, found = bytes.CutPrefix(body, []byte("rs_weight=")); !found {
+		if weightBuf, found = bytes.CutPrefix(firstBodyLine, []byte("rs_weight=")); !found {
 			// Return omitted if weight prefix is not found in body.
 			return weight.Omitted
 		}
+		// Additionally trim spaces.
+		weightBuf = bytes.TrimSpace(weightBuf)
 	}
 
 	var weight weight.Weight
