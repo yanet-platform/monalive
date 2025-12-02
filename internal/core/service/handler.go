@@ -3,6 +3,7 @@ package service
 import (
 	"log/slog"
 
+	"github.com/yanet-platform/monalive/internal/announcer"
 	"github.com/yanet-platform/monalive/internal/types/weight"
 	"github.com/yanet-platform/monalive/internal/types/xevent"
 )
@@ -79,10 +80,8 @@ func (m *Service) processAnnounce() {
 		// If the service announce status changed and service's announce group
 		// is set (which means that the service affects it's host prefix
 		// announce), then pass the update to the announcer.
-		err := m.announcer.UpdateService(m.config.AnnounceGroup, m.key, m.state.Alive)
-		if err != nil {
-			m.log.Error("failed to set up announce", slog.Any("error", err))
-		}
+		serviceStatus := announcer.ServiceStatus(m.state.Alive)
+		m.announcer.RegisterServiceEvent(m.key, serviceStatus)
 	}
 }
 

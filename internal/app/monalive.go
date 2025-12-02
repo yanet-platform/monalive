@@ -56,7 +56,7 @@ func New(config Config, logger *slog.Logger) (*Monalive, error) {
 	}
 
 	// Create a balancer worker instance.
-	balancer := balancer.New(config.Balancer, yanetClient, logger)
+	balancer := balancer.New(config.Balancer, yanetClient, announcer, logger)
 
 	// Initialize the check tunneler.
 	tunneler, err := checktun.New(config.Tunnel, xlog.NewNopLogger())

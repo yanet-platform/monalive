@@ -20,7 +20,7 @@ func defaultService() *Service {
 		Hysteresis: 0,
 	}
 	announcer := announcer.New(&announcer.Config{}, nil, xlog.NewNopLogger())
-	balancer := balancer.New(&balancer.Config{}, nil, xlog.NewNopLogger())
+	balancer := balancer.New(&balancer.Config{}, nil, announcer, xlog.NewNopLogger())
 	return New(serviceConfig, announcer, balancer, xlog.NewNopLogger())
 }
 
