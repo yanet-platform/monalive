@@ -59,6 +59,7 @@ func (m *Config) Key() key.Real {
 
 // Default sets the default values for the real configuration.
 func (m *Config) Default() {
+	m.Port = port.Omitted
 	m.Weight = 1
 }
 

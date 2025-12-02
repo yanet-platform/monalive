@@ -76,6 +76,7 @@ func (m *Config) Key() key.Service {
 
 // Default sets the default values for the service configuration.
 func (m *Config) Default() {
+	m.VPort = port.Omitted
 	m.ForwardingMethod = "TUN"
 	m.Quorum = 1
 	m.Scheduler.Default()
