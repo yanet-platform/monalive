@@ -12,6 +12,7 @@ import (
 	"net/netip"
 
 	"github.com/yanet-platform/monalive/internal/types/weight"
+	"github.com/yanet-platform/monalive/internal/utils/exp"
 	"github.com/yanet-platform/monalive/internal/utils/xnet"
 	"github.com/yanet-platform/monalive/internal/utils/xtls"
 )
@@ -32,7 +33,11 @@ type HTTPCheckOption func(*HTTPCheck)
 // HTTPWithTLS returns an HTTPCheckOption that enables TLS for the HTTP check.
 func HTTPWithTLS() HTTPCheckOption {
 	return func(check *HTTPCheck) {
-		// Set the TLS configuration.
+		if check.config.Virtualhost != nil && exp.TLSSNIEnabled() {
+			// Use the virtualhost as ServerName for SNI.
+			check.tlsConfig = xtls.TLSConfigWithServerName(*check.config.Virtualhost)
+			return
+		}
 		check.tlsConfig = xtls.TLSConfig()
 	}
 }

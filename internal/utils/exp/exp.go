@@ -11,6 +11,9 @@ type Config struct {
 	// set and the LVSSheduler of the virtual service is set to MH, LVSSheduler
 	// value will be replaced by new value.
 	ReplaceMHWith string `yaml:"replace_mh_with"`
+	// EnableTLSSNI is the flag to enable TLS SNI in HTTPs and gRPC checks. If
+	// set, virtualhost will be used as a value.
+	EnableTLSSNI bool `yaml:"enable_tls_sni"`
 }
 
 var experimentalFeaturesOnce sync.Once // used to initialize experimental features only once
@@ -28,4 +31,8 @@ func experimentalFeatures(config Config) {
 	}
 
 	setReplaceMHWith(config.ReplaceMHWith)
+
+	if config.EnableTLSSNI {
+		enableTLSSNI()
+	}
 }
