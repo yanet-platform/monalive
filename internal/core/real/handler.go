@@ -1,6 +1,8 @@
 package real
 
 import (
+	"time"
+
 	log "go.uber.org/zap"
 
 	"github.com/yanet-platform/monalive/internal/types/weight"
@@ -137,6 +139,9 @@ func (m *Real) enableReal() (changed bool) {
 		log.Int("weight", int(m.state.Weight)),
 		log.String("event_type", "real update"),
 	)
+
+	m.updateTransitionTimestamp()
+
 	return true
 }
 
@@ -180,6 +185,9 @@ func (m *Real) disableReal(eventType xevent.Type) (changed bool) {
 	// Increment the transition counter to track status changes.
 	m.state.Transitions++
 	m.log.Info("real disabled", log.String("event_type", "real update"))
+
+	m.updateTransitionTimestamp()
+
 	return true
 }
 
@@ -200,4 +208,13 @@ func (m *Real) updateWeight(weight weight.Weight) (changed bool) {
 		log.String("event_type", "real update"),
 	)
 	return true
+}
+
+// updateTransitionTime updates the transition time of the real's state and
+// observes transition period.
+func (m *Real) updateTransitionTimestamp() {
+	timestamp := time.Now()
+	transitionPeriod := timestamp.Sub(m.state.TransitionTimestamp)
+	m.metrics.RealTransitionPeriod().Observe(transitionPeriod.Seconds())
+	m.state.TransitionTimestamp = timestamp
 }

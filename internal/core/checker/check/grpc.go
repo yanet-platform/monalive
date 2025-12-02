@@ -16,6 +16,21 @@ import (
 	"github.com/yanet-platform/monalive/internal/utils/xtls"
 )
 
+var (
+	errGRPCCreateConn = Error{
+		labelValue: "grpc_create_conn",
+		error:      fmt.Errorf("failed to create grpc connection"),
+	}
+	errGRPCCheck = Error{
+		labelValue: "grpc_check",
+		error:      fmt.Errorf("failed to perform grpc check"),
+	}
+	errGRPCStatusCode = Error{
+		labelValue: "grpc_status_code",
+		error:      fmt.Errorf("status does not match"),
+	}
+)
+
 // GRPCCheck performs gRPC health checks based on the provided configuration.
 type GRPCCheck struct {
 	config Config     // configuration for the gRPC check
@@ -49,9 +64,9 @@ func (m *GRPCCheck) Do(ctx context.Context, md *Metadata) (err error) {
 	defer cancel()
 
 	// Setup connection.
-	conn, err := m.newConn(ctx)
+	conn, err := m.newConn()
 	if err != nil {
-		return fmt.Errorf("failed to create new conn: %w", err)
+		return errGRPCCreateConn.Extend(err)
 	}
 	defer conn.Close()
 
@@ -78,7 +93,7 @@ func (m *GRPCCheck) Do(ctx context.Context, md *Metadata) (err error) {
 	var header metadata.MD
 	response, err := client.Check(ctx, &healthpb.HealthCheckRequest{Service: serviceName}, grpc.Header(&header))
 	if err != nil {
-		return err
+		return errGRPCCheck.Extend(err)
 	}
 
 	// Handle the response and update metadata.
@@ -99,9 +114,8 @@ func (m *GRPCCheck) URI() string {
 
 // newConn creates a new gRPC connection with the provided context. It sets up
 // the transport credentials, user agent, and context dialer for the connection.
-func (m *GRPCCheck) newConn(ctx context.Context) (*grpc.ClientConn, error) {
-	return grpc.DialContext(
-		ctx,
+func (m *GRPCCheck) newConn() (*grpc.ClientConn, error) {
+	return grpc.NewClient(
 		m.uri,
 		grpc.WithTransportCredentials(credentials.NewTLS(xtls.TLSConfig())), // use TLS credentials
 		grpc.WithUserAgent(UserAgentRequestHeader),                          // set the user agent
@@ -115,8 +129,9 @@ func (m *GRPCCheck) newConn(ctx context.Context) (*grpc.ClientConn, error) {
 // updates the Metadata with the response details.
 func (m *GRPCCheck) handle(md *Metadata, response *healthpb.HealthCheckResponse, header metadata.MD) error {
 	if status := response.GetStatus(); !m.matchStatus(status) {
-		// Return error if status mismatch.
-		return fmt.Errorf("status does not match: %s", status.String())
+		return errGRPCStatusCode.Extend(
+			fmt.Errorf("expected %s, got %s", healthpb.HealthCheckResponse_SERVING, status),
+		)
 	}
 
 	// Update metadata to indicate the connection is alive.

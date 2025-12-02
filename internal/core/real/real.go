@@ -5,6 +5,7 @@ import (
 	"context"
 	"slices"
 	"sync"
+	"time"
 
 	log "go.uber.org/zap"
 
@@ -42,10 +43,12 @@ type Real struct {
 	handler  xevent.Handler // callback event handler function provided by the parent service
 	eventsWG sync.WaitGroup // to manage goroutines handling events
 
+	metrics *Metrics
+
 	activationFunc ActivationFunc // used to control the activation of the real if necessary
 	isActive       bool
-	reloadMu       sync.Mutex // to prevent concurrent config updates
 
+	reloadMu sync.Mutex // to prevent concurrent config updates
 	shutdown *shutdown.Shutdown
 	log      *log.Logger
 }
@@ -58,6 +61,9 @@ type State struct {
 
 	// Whether dynamic weight calculation is supported by the real.
 	DynWeight bool
+
+	// TransitionTimestamp is the timestamp when the last transition occurred.
+	TransitionTimestamp time.Time
 
 	// If checker reports a failure and the inhibit_on_failure option is set in
 	// the real's config, then instead of disabling it, we keep it enabled, but
@@ -110,6 +116,7 @@ func New(config *Config, handler xevent.Handler, logger *log.Logger, opts ...Opt
 		checkers:     make(map[checker.Key]*checker.Checker),
 		checkersPool: workerpool.New(),
 		handler:      handler,
+		metrics:      NewMetrics(),
 		shutdown:     shutdown.New(),
 		log:          logger,
 	}
@@ -136,6 +143,9 @@ func (m *Real) Run(ctx context.Context) {
 
 	m.log.Info("running real", log.String("event_type", "real update"))
 	defer m.log.Info("real stopped", log.String("event_type", "real update"))
+
+	// Blocks access to the metrics after launching real.
+	m.metrics.Block()
 
 	// Reload to apply initial checkers configuration.
 	go func() {
@@ -196,6 +206,12 @@ func (m *Real) State() State {
 	m.stateMu.RLock()
 	defer m.stateMu.RUnlock()
 	return m.state
+}
+
+func (m *Real) SetMetrics(setMetricFunc ...SetMetricFunc) {
+	for _, f := range setMetricFunc {
+		f(m.metrics)
+	}
 }
 
 func (m *Real) reload(config *Config) {
@@ -262,6 +278,10 @@ func (m *Real) reload(config *Config) {
 					config.Weight,
 					forwardingData,
 					m.log,
+				)
+				newChecker.SetMetrics(
+					checker.SetErrorsMetric(m.metrics.RealErrors()),
+					checker.SetResponceTimeMetric(m.metrics.RealResponseTime()),
 				)
 				newCheckers[key] = newChecker
 				// Add new checker to the pool.

@@ -12,6 +12,7 @@ import (
 	"github.com/yanet-platform/monalive/internal/announcer"
 	"github.com/yanet-platform/monalive/internal/balancer"
 	"github.com/yanet-platform/monalive/internal/core/service"
+	"github.com/yanet-platform/monalive/internal/monitoring/metrics"
 	"github.com/yanet-platform/monalive/internal/types/key"
 	"github.com/yanet-platform/monalive/internal/utils/shutdown"
 	"github.com/yanet-platform/monalive/internal/utils/workerpool"
@@ -26,18 +27,22 @@ type Core struct {
 	servicesMu   sync.Mutex                       // to protect concurent access to the services map
 	servicesPool *workerpool.Pool
 
+	metrics *Metrics
+
 	shutdown *shutdown.Shutdown
 	log      *log.Logger
 }
 
 // New creates a new Core instance.
-func New(announcer *announcer.Announcer, balancer *balancer.Balancer, logger *log.Logger) *Core {
+func New(announcer *announcer.Announcer, balancer *balancer.Balancer, metrics *metrics.ScopedMetrics, logger *log.Logger) *Core {
 	return &Core{
 		announcer: announcer,
 		balancer:  balancer,
 
 		services:     map[key.Service]*service.Service{},
 		servicesPool: workerpool.New(),
+
+		metrics: NewMetrics(metrics),
 
 		shutdown: shutdown.New(),
 		log:      logger,
@@ -114,6 +119,15 @@ func (m *Core) Reload(config *Config) error {
 				// it's a new service. Create a new service instance with the
 				// provided configuration.
 				newService := service.New(cfg, m.announcer, m.balancer, m.log)
+				serviceLabels := key.Labels()
+				newService.SetMetrics(
+					service.SetRealsEnabledMetric(m.metrics.RealsEnabledForService(serviceLabels)),
+					service.SetRealsMetric(m.metrics.RealsForService(serviceLabels)),
+					service.SetRealsTransitionPeriodMetric(m.metrics.RealsTrasitionPeriodForService(serviceLabels)),
+					service.SetRealsResponseTimeMetric(m.metrics.RealsResponseTimeForService(serviceLabels)),
+					service.SetRealsErrorsMetric(m.metrics.RealsErrorsForService(serviceLabels)),
+				)
+
 				// Add the new service to the new services map.
 				newServices[key] = newService
 				// Add new service to the pool.
@@ -127,6 +141,7 @@ func (m *Core) Reload(config *Config) error {
 	for _, service := range m.services {
 		// Gracefully stop each outdated service.
 		service.Stop()
+		m.metrics.DeleteService(service.Key().Labels())
 	}
 
 	// Finally, replace the old services map with the new one that contains the

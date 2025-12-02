@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"time"
 
 	log "go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
@@ -12,6 +13,8 @@ import (
 	"github.com/yanet-platform/monalive/internal/balancer"
 	"github.com/yanet-platform/monalive/internal/balancer/yanet"
 	"github.com/yanet-platform/monalive/internal/core"
+	"github.com/yanet-platform/monalive/internal/monitoring/metrics"
+	"github.com/yanet-platform/monalive/internal/monitoring/metrics/prometheus"
 	"github.com/yanet-platform/monalive/internal/server"
 	"github.com/yanet-platform/monalive/internal/utils/xtls"
 	"github.com/yanet-platform/monalive/pkg/checktun"
@@ -29,7 +32,8 @@ type Monalive struct {
 
 	server *server.Server
 
-	logger *log.Logger
+	metrics *metrics.ScopedMetrics
+	logger  *log.Logger
 }
 
 // New creates a new instance of Monalive service.
@@ -37,6 +41,18 @@ func New(config Config, logger *log.Logger) (*Monalive, error) {
 	// Set the minimum TLS version from the configuration.
 	if err := xtls.SetTLSMinVersion(config.TLSMinVersion); err != nil {
 		logger.Warn("failed to set TLSMinVersion from config", log.Error(err))
+	}
+
+	scopedMetrics := metrics.NewScopedMetrics(logger)
+	scopedMetrics.Set(
+		metrics.Global,
+		prometheus.NewProvider(logger.With(log.String("scope", string(metrics.Global)))),
+	)
+	if config.Metrics.EnablePerServiceMetrics {
+		scopedMetrics.Set(
+			metrics.PerService,
+			prometheus.NewProvider(logger.With(log.String("scope", string(metrics.PerService)))),
+		)
 	}
 
 	// Initialize the Bird announcer.
@@ -64,14 +80,14 @@ func New(config Config, logger *log.Logger) (*Monalive, error) {
 	}
 
 	// Create the core service and its manager.
-	coreService := core.New(announcer, balancer, logger)
-	coreManager, err := core.NewManager(config.Service, coreService, logger)
+	coreService := core.New(announcer, balancer, scopedMetrics, logger)
+	coreManager, err := core.NewManager(config.Service, coreService, scopedMetrics.Scope(metrics.Global), logger)
 	if err != nil {
 		return nil, err
 	}
 
 	// Initialize the server with the core manager.
-	server := server.New(config.Server, coreManager, logger)
+	server := server.New(config.Server, scopedMetrics.Gatherers(), coreManager, logger)
 
 	return &Monalive{
 		config:      config,
@@ -81,6 +97,7 @@ func New(config Config, logger *log.Logger) (*Monalive, error) {
 		core:        coreService,
 		coreManager: coreManager,
 		server:      server,
+		metrics:     scopedMetrics,
 		logger:      logger,
 	}, nil
 }
@@ -120,6 +137,9 @@ func (m *Monalive) Run(ctx context.Context) error {
 	wg.Go(func() error {
 		<-ctx.Done()
 
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
 		// Stop all components gracefully.
 
 		m.server.Stop()
@@ -131,6 +151,8 @@ func (m *Monalive) Run(ctx context.Context) error {
 
 		m.announcer.Stop()
 		m.tunneler.Stop()
+
+		m.metrics.Shutdown(shutdownCtx)
 
 		return ctx.Err()
 	})

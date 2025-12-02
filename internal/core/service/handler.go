@@ -56,6 +56,7 @@ func (m *Service) processSucceed(event *xevent.Event) {
 		// Also, if the real was previoulsy disabled increment the count of
 		// alive reals.
 		m.state.RealsAlive++
+		m.metrics.RealsEnabled().Add(1)
 	}
 	// Update the total weight of the service.
 	m.state.Weight += delta
@@ -69,6 +70,7 @@ func (m *Service) processFailure(event *xevent.Event) {
 	m.state.Weight -= event.Init.Weight
 	// Decrement the count of alive reals.
 	m.state.RealsAlive--
+	m.metrics.RealsEnabled().Sub(1)
 }
 
 // processAnnounce updates the service announce status based on the current

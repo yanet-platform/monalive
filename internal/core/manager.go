@@ -12,6 +12,7 @@ import (
 
 	monalivepb "github.com/yanet-platform/monalive/gen/manager"
 	"github.com/yanet-platform/monalive/internal/core/service"
+	"github.com/yanet-platform/monalive/internal/monitoring/metrics"
 	"github.com/yanet-platform/monalive/internal/types/requestid"
 )
 
@@ -42,12 +43,13 @@ type Manager struct {
 	core     *Core        // core instance that managing all health checking logic
 	loader   ConfigLoader // this function is used to load the services configuration
 	updateTS time.Time    // last configuration update timestamp
+	metrics  metrics.Provider
 	logger   *log.Logger
 }
 
 // NewManager creates a new Manager instance. It selects the appropriate
 // configuration loader based on the format specified in the config.
-func NewManager(config *ManagerConfig, core *Core, logger *log.Logger) (*Manager, error) {
+func NewManager(config *ManagerConfig, core *Core, metrics metrics.Provider, logger *log.Logger) (*Manager, error) {
 	var loader ConfigLoader
 	switch format := config.Services.Format; format {
 	case KeepalivedFormat:
@@ -59,10 +61,11 @@ func NewManager(config *ManagerConfig, core *Core, logger *log.Logger) (*Manager
 	}
 
 	return &Manager{
-		config: config,
-		core:   core,
-		loader: loader,
-		logger: logger,
+		config:  config,
+		core:    core,
+		loader:  loader,
+		metrics: metrics,
+		logger:  logger,
 	}, nil
 }
 

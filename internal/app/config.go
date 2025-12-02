@@ -12,13 +12,15 @@ import (
 	"github.com/yanet-platform/monalive/internal/balancer/yanet"
 	"github.com/yanet-platform/monalive/internal/core"
 	"github.com/yanet-platform/monalive/internal/monitoring/logger"
+	"github.com/yanet-platform/monalive/internal/monitoring/metrics"
 	"github.com/yanet-platform/monalive/internal/server"
 	"github.com/yanet-platform/monalive/internal/utils/exp"
 	"github.com/yanet-platform/monalive/pkg/checktun"
 )
 
 type Config struct {
-	Logger *logger.Config `yaml:"logging"`
+	Logger  *logger.Config  `yaml:"logging"`
+	Metrics *metrics.Config `yaml:"metrics"`
 
 	Balancer *balancer.Config `yaml:"balancer"`
 	YANET    *yanet.Config    `yaml:"yanet"`

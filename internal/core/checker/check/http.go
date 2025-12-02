@@ -19,6 +19,29 @@ import (
 
 const UserAgentRequestHeader = "monalive"
 
+var (
+	errHTTPCreateRequest = Error{
+		labelValue: "http_create_request",
+		error:      fmt.Errorf("failed to create http request"),
+	}
+	errHTTPProcessRequest = Error{
+		labelValue: "http_process_request",
+		error:      fmt.Errorf("failed to process http request"),
+	}
+	errHTTPStatusCode = Error{
+		labelValue: "http_status_code",
+		error:      fmt.Errorf("status code does not match"),
+	}
+	errHTTPReadResponse = Error{
+		labelValue: "http_read_response",
+		error:      fmt.Errorf("failed to read response body"),
+	}
+	errHTTPDigest = Error{
+		labelValue: "http_digest",
+		error:      fmt.Errorf("digest does not match"),
+	}
+)
+
 // HTTPCheck performs HTTP or HTTPS checks based on the provided configuration.
 type HTTPCheck struct {
 	config    Config      // configuration for the HTTP check
@@ -84,12 +107,12 @@ func (m *HTTPCheck) Do(ctx context.Context, md *Metadata) (err error) {
 
 	request, err := m.newRequest(ctx, md)
 	if err != nil {
-		return fmt.Errorf("failed to create new request: %w", err)
+		return errHTTPCreateRequest.Extend(err)
 	}
 
 	response, err := m.client.Do(request)
 	if err != nil {
-		return fmt.Errorf("failed to process request: %w", err)
+		return errHTTPProcessRequest.Extend(err)
 	}
 	defer response.Body.Close()
 
@@ -157,19 +180,18 @@ func (m *HTTPCheck) newRequest(ctx context.Context, md *Metadata) (*http.Request
 // the response details.
 func (m *HTTPCheck) handle(md *Metadata, response *http.Response) error {
 	if !m.matchStatusCode(response.StatusCode) {
-		// Return error if status code mismatch.
-		return fmt.Errorf("status code does not match: %d", response.StatusCode)
+		return errHTTPStatusCode.Extend(
+			fmt.Errorf("expected %d, got %d", m.config.StatusCode, response.StatusCode),
+		)
 	}
 
 	body, err := io.ReadAll(response.Body)
 	if err != nil {
-		// Return error if reading body fails.
-		return fmt.Errorf("failed to read response body: %w", err)
+		return errHTTPReadResponse.Extend(err)
 	}
 
 	if !m.matchDigest(body) {
-		// Return error if digest mismatch.
-		return fmt.Errorf("digest does not match")
+		return errHTTPDigest
 	}
 
 	// Update metadata to indicate the connection is alive.

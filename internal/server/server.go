@@ -15,22 +15,26 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 
 	monalivepb "github.com/yanet-platform/monalive/gen/manager"
+	"github.com/yanet-platform/monalive/internal/monitoring/metrics"
+	"github.com/yanet-platform/monalive/internal/utils/runtimemetrics"
 )
 
 // Server is used to handle requests for various management operations with
 // Monalive, such as checking the current configuration status and reloading it.
 type Server struct {
-	config     *Config
-	manager    monalivepb.MonaliveManagerServer
-	grpcServer *grpc.Server
-	httpServer *http.Server
-	logger     *log.Logger
+	config        *Config
+	metrics       map[metrics.Scope]metrics.Gatherer
+	manager       monalivepb.MonaliveManagerServer
+	grpcServer    *grpc.Server
+	httpServer    *http.Server
+	metricsServer *http.Server
+	logger        *log.Logger
 }
 
 // New creates a new Server instance with the given configuration and gRPC
 // manager. It initializes both gRPC and HTTP servers and registers necessary
 // services.
-func New(config *Config, manager monalivepb.MonaliveManagerServer, logger *log.Logger) *Server {
+func New(config *Config, metrics map[metrics.Scope]metrics.Gatherer, manager monalivepb.MonaliveManagerServer, logger *log.Logger) *Server {
 	// Create a new gRPC server and register the MonaliveManagerServer
 	// implementation.
 	gRPCServer := grpc.NewServer()
@@ -43,12 +47,19 @@ func New(config *Config, manager monalivepb.MonaliveManagerServer, logger *log.L
 	httpServer := &http.Server{
 		Addr: config.HTTPAddr,
 	}
+	// Initialize the HTTP server for export metrics
+	metricsServer := &http.Server{
+		Addr: config.MetricsAddr,
+	}
 
 	return &Server{
-		config:     config,
-		manager:    manager,
-		grpcServer: gRPCServer,
-		httpServer: httpServer,
+		config:        config,
+		metrics:       metrics,
+		manager:       manager,
+		grpcServer:    gRPCServer,
+		httpServer:    httpServer,
+		metricsServer: metricsServer,
+		logger:        logger,
 	}
 }
 
@@ -61,6 +72,9 @@ func (m *Server) Run(ctx context.Context) error {
 	wg.Go(func() error {
 		return m.runHTTPServer(ctx)
 	})
+	wg.Go(func() error {
+		return m.runMetricsServer(ctx)
+	})
 	return wg.Wait()
 }
 
@@ -71,6 +85,7 @@ func (m *Server) Stop() {
 
 	m.grpcServer.Stop()
 	_ = m.httpServer.Shutdown(ctx)
+	_ = m.metricsServer.Shutdown(ctx)
 }
 
 func (m *Server) runGRPCServer() error {
@@ -104,4 +119,15 @@ func (m *Server) runHTTPServer(ctx context.Context) error {
 	m.httpServer.Handler = handler
 
 	return m.httpServer.ListenAndServe()
+}
+
+func (m *Server) runMetricsServer(_ context.Context) error {
+	// Create an http handler for exporting metrics
+	for scope, gatherer := range m.metrics {
+		http.Handle(fmt.Sprintf("/v1/metrics/%s", scope), gatherer.GetHTTPHandler())
+	}
+
+	http.Handle("/v1/metrics/debug", runtimemetrics.HTTPHandler)
+
+	return m.metricsServer.ListenAndServe()
 }

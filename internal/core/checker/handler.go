@@ -9,6 +9,7 @@ import (
 	"github.com/yanet-platform/monalive/internal/core/checker/check"
 	"github.com/yanet-platform/monalive/internal/types/weight"
 	"github.com/yanet-platform/monalive/internal/types/xevent"
+	"github.com/yanet-platform/monalive/internal/utils/throttler"
 )
 
 // ProcessCheck processes the results of a health check, updating the internal
@@ -81,6 +82,12 @@ func (m *Checker) processFail(opErr error) {
 	// Update last check timestamp.
 	m.state.Timestamp = time.Now()
 
+	errorLabel := check.ErrorLabelUnknown
+	if checkErr, implements := opErr.(check.LabeledError); implements {
+		errorLabel = checkErr.Label()
+	}
+	m.metrics.Errors().GetMetricWith(errorLabel).Inc()
+
 	// Disable the checker if the failure threshold has been exceeded.
 	if statusChanged := m.disableChecker(opErr); !statusChanged {
 		// If the checker was already disabled, no event is triggered.
@@ -149,14 +156,17 @@ func (m *Checker) disableChecker(opErr error) (changed bool) {
 // false.
 func (m *Checker) failedAttempt(opErr error) (exceeded bool) {
 	m.state.FailedAttempts++
-	// TODO: Consider implementing an exponential counter for error logs to
-	// prevent verbose logging.
-	m.log.Error(
-		"check failed",
-		log.Error(opErr),
-		log.Int("attempt", m.state.FailedAttempts),
-		log.String("event_type", "checker update"),
-	)
+
+	attempt, limit := uint64(m.state.FailedAttempts), uint64(m.config.GetRetries())+1
+	if !throttler.Throttle(attempt, limit) {
+		m.log.Error(
+			"check failed",
+			log.Error(opErr),
+			log.Uint64("attempt", attempt),
+			log.String("event_type", "checker update"),
+		)
+	}
+
 	return m.state.FailedAttempts > m.config.GetRetries()
 }
 

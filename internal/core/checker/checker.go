@@ -40,6 +40,8 @@ type Checker struct {
 	handler  xevent.Handler // callback event handler function provided by the parent real
 	eventsWG sync.WaitGroup // to manage goroutines handling events
 
+	metrics *Metrics
+
 	shutdown *shutdown.Shutdown
 	log      *log.Logger
 }
@@ -61,6 +63,7 @@ func New(config *Config, handler xevent.Handler, weight weight.Weight, forwardin
 	checker := &Checker{
 		config:   config,
 		handler:  handler,
+		metrics:  NewMetrics(),
 		shutdown: shutdown.New(),
 	}
 
@@ -120,6 +123,9 @@ func (m *Checker) Run(ctx context.Context) {
 	)
 	defer m.log.Info("checker stopped", log.String("event_type", "checker update"))
 
+	// Blocks access to the metrics after launching cheker.
+	m.metrics.Block()
+
 	// Preventively increment the event counter so that checker's Stop function
 	// doesn't complete until the shutdown event is handled properly.
 	m.eventsWG.Add(1)
@@ -158,8 +164,10 @@ func (m *Checker) Run(ctx context.Context) {
 			Weight: currState.Weight,
 		}
 
+		start := time.Now()
 		// Perform the check operation.
 		opErr := m.check.Do(ctx, &md)
+		m.metrics.ResponseTime().Observe(time.Since(start).Seconds())
 
 		// Force check result processing if the configuration has changed
 		// manually.
@@ -199,4 +207,10 @@ func (m *Checker) State() State {
 	defer m.stateMu.RUnlock()
 
 	return m.state
+}
+
+func (m *Checker) SetMetrics(setMetricFunc ...SetMetricFunc) {
+	for _, f := range setMetricFunc {
+		f(m.metrics)
+	}
 }
