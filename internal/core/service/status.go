@@ -40,5 +40,8 @@ func (m *Service) Status() *monalivepb.ServiceStatus {
 		Ipv4OuterSourceNetwork: m.config.IPv4OuterSourceNetwork,
 		Ipv6OuterSourceNetwork: m.config.IPv6OuterSourceNetwork,
 		Rs:                     realStatus,
+
+		// TODO: REMOVE
+		QuorumUp: m.config.QuorumUp,
 	}
 }

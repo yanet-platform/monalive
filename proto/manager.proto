@@ -88,6 +88,8 @@ message ServiceStatus {
   string ipv6_outer_source_network = 12;
   // List of real server statuses associated with the service.
   repeated RealStatus rs = 13;
+  // TODO: remove 
+  string quorum_up = 14;
 }
 
 // RealStatus message representing the status of a real server.
