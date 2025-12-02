@@ -51,14 +51,12 @@ func NewHTTPCheck(config Config, forwardingData xnet.ForwardingData, opts ...HTT
 	check.uri = check.URI()
 	dialer := xnet.NewDialer(config.BindIP, config.GetConnectTimeout(), forwardingData)
 	check.client = http.Client{
-		Transport: http.RoundTripper(
-			&http.Transport{
-				TLSClientConfig:     check.tlsConfig,    // set TLS configuration if available
-				MaxIdleConnsPerHost: -1,                 // disable connection pooling
-				DisableKeepAlives:   true,               // disable keep-alives
-				DialContext:         dialer.DialContext, // use custom dialer
-			},
-		),
+		Transport: &http.Transport{
+			TLSClientConfig:     check.tlsConfig,    // set TLS configuration if available
+			MaxIdleConnsPerHost: -1,                 // disable connection pooling
+			DisableKeepAlives:   true,               // disable keep-alives
+			DialContext:         dialer.DialContext, // use custom dialer
+		},
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			return http.ErrUseLastResponse // do not follow redirects
 		},

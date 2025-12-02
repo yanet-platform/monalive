@@ -15,6 +15,22 @@ var tlsMinVersion uint16 // holds the minimum TLS version required for connectio
 var tlsConfig = tls.Config{
 	InsecureSkipVerify: true, // Enforce verification of server certificates
 	MinVersion:         tlsMinVersion,
+	// Override default CurvePreferences to disable X25519Kyber768Draft00, which
+	// is enabled by default in Go 1.23 for post-quantum key exchange (see
+	// https://tip.golang.org/doc/go1.23#cryptotlspkgcryptotls).
+	//
+	// This is necessary because our CheckTun process reads packets via nfqueue
+	// and is limited to 1500 bytes per packet by default. The Kyber-based
+	// handshake generates larger TLS records that exceed this limit and are
+	// dropped, causing the TLS handshake to fail. By specifying classic curves
+	// only, we ensure that handshake messages remain within acceptable size
+	// limits.
+	CurvePreferences: []tls.CurveID{
+		tls.X25519,
+		tls.CurveP256,
+		tls.CurveP384,
+		tls.CurveP521,
+	},
 }
 
 func init() {

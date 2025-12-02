@@ -80,4 +80,4 @@ check_tun:
   # Socket buffer size.
   socket_buffer: 10485760
   # Receiving buffer size.
-  receive_buffer: 1000
+  receive_buffer: 1500
