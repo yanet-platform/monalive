@@ -13,6 +13,7 @@ import (
 	"github.com/yanet-platform/monalive/internal/core"
 	"github.com/yanet-platform/monalive/internal/monitoring/xlog"
 	"github.com/yanet-platform/monalive/internal/server"
+	"github.com/yanet-platform/monalive/internal/utils/exp"
 	"github.com/yanet-platform/monalive/pkg/checktun"
 )
 
@@ -29,6 +30,8 @@ type Config struct {
 	Service       *core.ManagerConfig `yaml:"service"`
 	Server        *server.Config      `yaml:"server"`
 	Tunnel        checktun.Config     `yaml:"check_tun"`
+
+	Experiments exp.Config `yaml:"experiments"`
 }
 
 func LoadConfig(path string) (Config, error) {

@@ -12,6 +12,7 @@ import (
 	"github.com/yanet-platform/monalive/internal/types/key"
 	"github.com/yanet-platform/monalive/internal/types/port"
 	"github.com/yanet-platform/monalive/internal/utils/coalescer"
+	"github.com/yanet-platform/monalive/internal/utils/exp"
 )
 
 var ErrInvalidQuorumScript = errors.New("invalid quorum script")
@@ -240,6 +241,9 @@ func convertScheduler(scheduler string, ops bool) string {
 	// Temporary mh->wrr mapping until YANET supports mh (upd: guess it won't)
 	// scheduler.
 	if scheduler == "mh" {
+		if newSched := exp.MHReplaceValue(); newSched != "" {
+			return newSched
+		}
 		return "wrr"
 	}
 

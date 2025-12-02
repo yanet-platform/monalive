@@ -15,6 +15,7 @@ import (
 
 	"github.com/yanet-platform/monalive/internal/app"
 	"github.com/yanet-platform/monalive/internal/monitoring/xlog"
+	"github.com/yanet-platform/monalive/internal/utils/exp"
 )
 
 func main() {
@@ -59,6 +60,7 @@ func exec(configPath string) error {
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
+	exp.ExperimentalFeatures(config.Experiments)
 
 	logger, err := xlog.New(config.Logger)
 	if err != nil {
