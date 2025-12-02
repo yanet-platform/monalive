@@ -11,6 +11,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	monalivepb "github.com/yanet-platform/monalive/gen/manager"
+	"github.com/yanet-platform/monalive/internal/core/service"
 )
 
 // ServicesConfig defines the configuration for loading and dumping service
@@ -112,9 +113,11 @@ func (m *Manager) GetStatus(ctx context.Context, _ *monalivepb.GetStatusRequest)
 // loadConfig loads the configuration from the specified path using the selected loader function.
 // It returns the loaded Config instance or an error if loading fails.
 func (m *Manager) loadConfig() (*Config, error) {
-	var coreConfig Config
-	if err := m.loader(m.config.Services.Path, &coreConfig); err != nil {
+	coreConfig := &Config{
+		Services: []*service.Config{},
+	}
+	if err := m.loader(m.config.Services.Path, coreConfig); err != nil {
 		return nil, fmt.Errorf("failed to load services config [format: %s]: %w", m.config.Services.Format, err)
 	}
-	return &coreConfig, nil
+	return coreConfig, nil
 }
