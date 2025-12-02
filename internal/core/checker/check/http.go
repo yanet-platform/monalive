@@ -10,7 +10,6 @@ import (
 	"io"
 	"net/http"
 	"net/netip"
-	"net/url"
 
 	"github.com/yanet-platform/monalive/internal/types/weight"
 	"github.com/yanet-platform/monalive/internal/utils/xnet"
@@ -104,17 +103,21 @@ func (m *HTTPCheck) URI() string {
 		return m.uri
 	}
 
-	uri := url.URL{
-		Scheme: "http",
-		Host:   netip.AddrPortFrom(m.config.ConnectIP, m.config.ConnectPort.Value()).String(),
-		Path:   m.config.Path,
-	}
+	schema := "http"
 	if m.tlsConfig != nil {
 		// Use HTTPS if TLS configuration is set.
-		uri.Scheme = "https"
+		schema = "https"
 	}
 
-	return uri.String()
+	host := netip.AddrPortFrom(m.config.ConnectIP, m.config.ConnectPort.Value()).String()
+	if m.config.Virtualhost != nil {
+		// Set virtual host if configured.
+		host = *m.config.Virtualhost
+	}
+
+	path := m.config.Path
+
+	return fmt.Sprintf("%s://%s%s", schema, host, path)
 }
 
 // newRequest creates a new HTTP request with the provided context and metadata.
@@ -124,11 +127,6 @@ func (m *HTTPCheck) newRequest(ctx context.Context, md *Metadata) (*http.Request
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, m.uri, nil)
 	if err != nil {
 		return nil, err
-	}
-
-	if m.config.Virtualhost != nil {
-		// Set virtual host if configured.
-		request.Host = *m.config.Virtualhost
 	}
 
 	// Set Monalive User-Agent header.
