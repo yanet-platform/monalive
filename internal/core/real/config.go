@@ -14,8 +14,8 @@ import (
 	"github.com/yanet-platform/monalive/internal/utils/coalescer"
 )
 
-// Scheduler is a type alias for [scheduler.Config] to provide more informative naming
-// for the embedded field in the Config structure.
+// Scheduler is a type alias for [scheduler.Config] to provide more informative
+// naming for the embedded field in the Config structure.
 type Scheduler = scheduler.Config
 
 // Config represents the configuration for a real, including network details,
@@ -41,6 +41,7 @@ type Config struct {
 	Scheduler `keepalive_nested:"scheduler"`
 
 	// List of checker configurations separated by their types.
+
 	TCPCheckers   []*checker.Config `keepalive:"TCP_CHECK"`
 	HTTPCheckers  []*checker.Config `keepalive:"HTTP_GET"`
 	HTTPSCheckers []*checker.Config `keepalive:"SSL_GET"`
@@ -58,6 +59,7 @@ func (m *Config) Key() key.Real {
 
 // Default sets the default values for the real configuration.
 func (m *Config) Default() {
+	m.Port = port.Omitted
 	m.Weight = 1
 }
 
@@ -101,9 +103,10 @@ func (m *Config) Prepare() error {
 	return nil
 }
 
-// MarshalJSON implements json.Marshaler interface.  This custom marshaller
-// converts Port and Weight to strings and includes only necessary fields in the
-// JSON output.
+// MarshalJSON implements json.Marshaler interface.
+//
+// This custom marshaller converts Port and Weight to strings and includes only
+// necessary fields in the JSON output.
 func (m Config) MarshalJSON() ([]byte, error) {
 	return json.Marshal(
 		struct {
@@ -122,9 +125,30 @@ func (m Config) MarshalJSON() ([]byte, error) {
 // including scheduling settings and the virtual host.
 func (m *Config) propagate(checkers []*checker.Config) {
 	for _, checker := range checkers {
-		checker.Scheduler.DelayLoop = coalescer.Coalesce(checker.Scheduler.DelayLoop, m.Scheduler.DelayLoop)
-		checker.Scheduler.Retries = coalescer.Coalesce(checker.Scheduler.Retries, m.Scheduler.Retries)
-		checker.Scheduler.RetryDelay = coalescer.Coalesce(checker.Scheduler.RetryDelay, m.Scheduler.RetryDelay)
+		checker.DelayLoop = coalescer.Coalesce(checker.DelayLoop, m.DelayLoop)
+		checker.Retries = coalescer.Coalesce(checker.Retries, m.Retries)
+		checker.RetryDelay = coalescer.Coalesce(checker.RetryDelay, m.RetryDelay)
 		checker.URL.Virtualhost = coalescer.Coalesce(checker.Virtualhost, m.Virtualhost)
+	}
+}
+
+// DefaultConfig return default real configuration.
+// Used for testing purpuses only.
+func DefaultConfig() *Config {
+	virtualhost := "virtualhost"
+	var schedConfig Scheduler
+	schedConfig.Default()
+	return &Config{
+		IP:               netip.MustParseAddr("127.0.0.1"),
+		Port:             443,
+		Weight:           1,
+		InhibitOnFailure: false,
+		Virtualhost:      &virtualhost,
+		ForwardingMethod: "TUN",
+		Scheduler:        schedConfig,
+		TCPCheckers:      nil,
+		HTTPCheckers:     nil,
+		HTTPSCheckers:    nil,
+		GRPCCheckers:     nil,
 	}
 }

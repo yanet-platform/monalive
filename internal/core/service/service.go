@@ -5,8 +5,9 @@ package service
 
 import (
 	"context"
-	"log/slog"
 	"sync"
+
+	log "go.uber.org/zap"
 
 	"github.com/yanet-platform/monalive/internal/announcer"
 	"github.com/yanet-platform/monalive/internal/balancer"
@@ -36,8 +37,10 @@ type Service struct {
 
 	eventsWG sync.WaitGroup // to manage goroutines handling events
 
+	metrics *Metrics
+
 	shutdown *shutdown.Shutdown
-	log      *slog.Logger
+	log      *log.Logger
 }
 
 // State represents the current state of the service.
@@ -49,13 +52,13 @@ type State struct {
 }
 
 // New creates a new Service instance.
-func New(config *Config, announcer *announcer.Announcer, balancer *balancer.Balancer, logger *slog.Logger) *Service {
+func New(config *Config, announcer *announcer.Announcer, balancer *balancer.Balancer, logger *log.Logger) *Service {
 	logger = logger.With(
-		slog.String("virtual_ip", config.VIP.String()),
-		slog.String("port", config.VPort.String()),
-		slog.String("protocol", config.Protocol),
+		log.String("virtual_ip", config.VIP.String()),
+		log.String("port", config.VPort.String()),
+		log.String("protocol", config.Protocol),
 	)
-	defer logger.Info("service created", slog.String("event_type", "service update"))
+	defer logger.Info("service created", log.String("event_type", "service update"))
 
 	return &Service{
 		config: config,
@@ -66,6 +69,8 @@ func New(config *Config, announcer *announcer.Announcer, balancer *balancer.Bala
 
 		reals:     make(map[key.Real]*real.Real),
 		realsPool: workerpool.New(),
+
+		metrics: NewMetrics(),
 
 		shutdown: shutdown.New(),
 		log:      logger,
@@ -78,8 +83,11 @@ func New(config *Config, announcer *announcer.Announcer, balancer *balancer.Bala
 // initial configuration for the reals. The service will continue running until
 // its Stop method is invoked.
 func (m *Service) Run(ctx context.Context) {
-	m.log.Info("running service", slog.String("event_type", "service update"))
-	defer m.log.Info("service stopped", slog.String("event_type", "service update"))
+	m.log.Info("running service", log.String("event_type", "service update"))
+	defer m.log.Info("service stopped", log.String("event_type", "service update"))
+
+	// Blocks access to the metrics after launching service.
+	m.metrics.Block()
 
 	// Reload to apply initial reals configuration.
 	go m.Reload(m.config)
@@ -136,11 +144,18 @@ func (m *Service) Reload(config *Config) {
 					)
 				}
 				newReal := real.New(cfg, m.HandleEvent, m.log, realOpts...)
-
+				newReal.SetMetrics(
+					real.SetRealErrorsMetric(m.metrics.RealsErrors()),
+					real.SetRealTransitionPeriodMetric(m.metrics.RealsTransitionPeriod()),
+					real.SetRealResponseTimeMetric(m.metrics.RealsResponseTime()),
+				)
 				// Add the new real to the new reals map.
 				newReals[key] = newReal
 				// Add new real to the pool.
 				m.realsPool.Add(newReal)
+				// Increment the total number of reals as a new real was
+				// created.
+				m.metrics.RealsTotal().Add(1)
 			}
 		}
 	}
@@ -150,12 +165,18 @@ func (m *Service) Reload(config *Config) {
 	for _, real := range m.reals {
 		// Gracefully stop each outdated real.
 		real.Stop()
+		// Decrement the total number of reals.
+		m.metrics.RealsTotal().Sub(1)
 	}
 
 	// Finally, replace the old reals map with the new one that contains the
 	// updated set of reals and update service config.
 	m.reals = newReals
 	m.config = config
+
+	// It is neccesary to process the status of the service announce after
+	// reload due to possible changes in the announce settings.
+	m.processAnnounce()
 }
 
 // Stop gracefully shuts down the service, stopping all associated reals and
@@ -185,6 +206,16 @@ func (m *Service) State() State {
 	m.stateMu.RLock()
 	defer m.stateMu.RUnlock()
 	return m.state
+}
+
+func (m *Service) SetMetrics(setMetricFunc ...SetMetricFunc) {
+	for _, f := range setMetricFunc {
+		f(m.metrics)
+	}
+}
+
+func (m *Service) Key() key.Service {
+	return m.key
 }
 
 // realActivationFunc returns an activation function for a given real.

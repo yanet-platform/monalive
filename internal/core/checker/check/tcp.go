@@ -2,11 +2,23 @@ package check
 
 import (
 	"context"
+	"errors"
 	"net"
 	"net/netip"
 
 	"github.com/yanet-platform/monalive/internal/types/weight"
 	"github.com/yanet-platform/monalive/internal/utils/xnet"
+)
+
+var (
+	errTCPDial = Error{
+		labelValue: "tcp_dial",
+		error:      errors.New("failed to dial tcp connection"),
+	}
+	errTCPClose = Error{
+		labelValue: "tcp_close",
+		error:      errors.New("failed to close connection"),
+	}
 )
 
 // TCPCheck performs TCP connectivity checks based on the provided
@@ -44,11 +56,11 @@ func (m *TCPCheck) Do(ctx context.Context, md *Metadata) (err error) {
 
 	sock, err := m.dialer.DialContext(ctx, "tcp", m.uri)
 	if err != nil {
-		return err
+		return errTCPDial.Extend(err)
 	}
 
 	if err := sock.Close(); err != nil {
-		return err
+		return errTCPClose.Extend(err)
 	}
 
 	// Update metadata to indicate the connection is alive.

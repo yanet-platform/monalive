@@ -13,7 +13,7 @@ func (m *Service) Status() *monalivepb.ServiceStatus {
 	defer m.realsMu.Unlock()
 
 	state := m.State()
-	alive := 0
+	alive := uint32(0)
 	if state.Alive {
 		alive = 1
 	}
@@ -31,7 +31,7 @@ func (m *Service) Status() *monalivepb.ServiceStatus {
 		Port:                   m.config.VPort.ProtoMarshaller(),
 		Protocol:               m.config.Protocol,
 		LvsMethod:              m.config.ForwardingMethod,
-		QuorumState:            int32(alive),
+		QuorumState:            alive,
 		AliveWeight:            state.Weight.Uint32(),
 		AliveCount:             uint32(state.RealsAlive),
 		Transitions:            uint32(state.Transitions),
@@ -40,5 +40,8 @@ func (m *Service) Status() *monalivepb.ServiceStatus {
 		Ipv4OuterSourceNetwork: m.config.IPv4OuterSourceNetwork,
 		Ipv6OuterSourceNetwork: m.config.IPv6OuterSourceNetwork,
 		Rs:                     realStatus,
+
+		// TODO: REMOVE
+		QuorumUp: m.config.QuorumUp,
 	}
 }

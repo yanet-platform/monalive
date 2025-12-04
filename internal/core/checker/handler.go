@@ -2,12 +2,14 @@ package checker
 
 import (
 	"errors"
-	"log/slog"
 	"time"
+
+	log "go.uber.org/zap"
 
 	"github.com/yanet-platform/monalive/internal/core/checker/check"
 	"github.com/yanet-platform/monalive/internal/types/weight"
 	"github.com/yanet-platform/monalive/internal/types/xevent"
+	"github.com/yanet-platform/monalive/internal/utils/throttler"
 )
 
 // ProcessCheck processes the results of a health check, updating the internal
@@ -49,10 +51,13 @@ func (m *Checker) processSucceed(md check.Metadata) {
 	newWeight := md.Weight.Recalculate(m.state.Weight, m.config.DynamicWeightCoeff)
 	weightChanged := m.updateWeight(newWeight)
 
-	if !statusChanged && !weightChanged {
+	if !statusChanged && !weightChanged && !md.Force {
 		// If neither the status nor the weight changed, no event is triggered.
 		return
 	}
+
+	// Reset the ManualChanged flag.
+	m.state.ManualChanged = false
 
 	// Trigger an event to notify that the checker has been enabled with the new
 	// weight. Other event fields will be filled in when passing the real and
@@ -76,6 +81,12 @@ func (m *Checker) processFail(opErr error) {
 
 	// Update last check timestamp.
 	m.state.Timestamp = time.Now()
+
+	errorLabel := check.ErrorLabelUnknown
+	if checkErr, implements := opErr.(check.LabeledError); implements {
+		errorLabel = checkErr.Label()
+	}
+	m.metrics.Errors().GetMetricWith(errorLabel).Inc()
 
 	// Disable the checker if the failure threshold has been exceeded.
 	if statusChanged := m.disableChecker(opErr); !statusChanged {
@@ -145,14 +156,17 @@ func (m *Checker) disableChecker(opErr error) (changed bool) {
 // false.
 func (m *Checker) failedAttempt(opErr error) (exceeded bool) {
 	m.state.FailedAttempts++
-	// TODO: Consider implementing an exponential counter for error logs to
-	// prevent verbose logging.
-	m.log.Error(
-		"check failed",
-		slog.Any("error", opErr),
-		slog.Int("attempt", m.state.FailedAttempts),
-		slog.String("event_type", "checker update"),
-	)
+
+	attempt, limit := uint64(m.state.FailedAttempts), uint64(m.config.GetRetries())+1
+	if !throttler.Throttle(attempt, limit) {
+		m.log.Error(
+			"check failed",
+			log.Error(opErr),
+			log.Uint64("attempt", attempt),
+			log.String("event_type", "checker update"),
+		)
+	}
+
 	return m.state.FailedAttempts > m.config.GetRetries()
 }
 

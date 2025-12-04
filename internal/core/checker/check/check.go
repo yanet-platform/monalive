@@ -9,6 +9,9 @@ import (
 type Metadata struct {
 	Alive  bool
 	Weight weight.Weight
+	// Force indicates whether the check result shouls be processed in any
+	// scenario.
+	Force bool
 }
 
 // SetInactive updates the Metadata to indicate a failure in the health check. It

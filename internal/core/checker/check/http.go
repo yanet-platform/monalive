@@ -10,14 +10,37 @@ import (
 	"io"
 	"net/http"
 	"net/netip"
-	"net/url"
 
 	"github.com/yanet-platform/monalive/internal/types/weight"
+	"github.com/yanet-platform/monalive/internal/utils/exp"
 	"github.com/yanet-platform/monalive/internal/utils/xnet"
 	"github.com/yanet-platform/monalive/internal/utils/xtls"
 )
 
 const UserAgentRequestHeader = "monalive"
+
+var (
+	errHTTPCreateRequest = Error{
+		labelValue: "http_create_request",
+		error:      fmt.Errorf("failed to create http request"),
+	}
+	errHTTPProcessRequest = Error{
+		labelValue: "http_process_request",
+		error:      fmt.Errorf("failed to process http request"),
+	}
+	errHTTPStatusCode = Error{
+		labelValue: "http_status_code",
+		error:      fmt.Errorf("status code does not match"),
+	}
+	errHTTPReadResponse = Error{
+		labelValue: "http_read_response",
+		error:      fmt.Errorf("failed to read response body"),
+	}
+	errHTTPDigest = Error{
+		labelValue: "http_digest",
+		error:      fmt.Errorf("digest does not match"),
+	}
+)
 
 // HTTPCheck performs HTTP or HTTPS checks based on the provided configuration.
 type HTTPCheck struct {
@@ -33,7 +56,11 @@ type HTTPCheckOption func(*HTTPCheck)
 // HTTPWithTLS returns an HTTPCheckOption that enables TLS for the HTTP check.
 func HTTPWithTLS() HTTPCheckOption {
 	return func(check *HTTPCheck) {
-		// Set the TLS configuration.
+		if check.config.Virtualhost != nil && exp.TLSSNIEnabled() {
+			// Use the virtualhost as ServerName for SNI.
+			check.tlsConfig = xtls.TLSConfigWithServerName(*check.config.Virtualhost)
+			return
+		}
 		check.tlsConfig = xtls.TLSConfig()
 	}
 }
@@ -52,14 +79,12 @@ func NewHTTPCheck(config Config, forwardingData xnet.ForwardingData, opts ...HTT
 	check.uri = check.URI()
 	dialer := xnet.NewDialer(config.BindIP, config.GetConnectTimeout(), forwardingData)
 	check.client = http.Client{
-		Transport: http.RoundTripper(
-			&http.Transport{
-				TLSClientConfig:     check.tlsConfig,    // set TLS configuration if available
-				MaxIdleConnsPerHost: -1,                 // disable connection pooling
-				DisableKeepAlives:   true,               // disable keep-alives
-				DialContext:         dialer.DialContext, // use custom dialer
-			},
-		),
+		Transport: &http.Transport{
+			TLSClientConfig:     check.tlsConfig,    // set TLS configuration if available
+			MaxIdleConnsPerHost: -1,                 // disable connection pooling
+			DisableKeepAlives:   true,               // disable keep-alives
+			DialContext:         dialer.DialContext, // use custom dialer
+		},
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			return http.ErrUseLastResponse // do not follow redirects
 		},
@@ -82,12 +107,12 @@ func (m *HTTPCheck) Do(ctx context.Context, md *Metadata) (err error) {
 
 	request, err := m.newRequest(ctx, md)
 	if err != nil {
-		return fmt.Errorf("failed to create new request: %w", err)
+		return errHTTPCreateRequest.Extend(err)
 	}
 
 	response, err := m.client.Do(request)
 	if err != nil {
-		return fmt.Errorf("failed to process request: %w", err)
+		return errHTTPProcessRequest.Extend(err)
 	}
 	defer response.Body.Close()
 
@@ -104,17 +129,16 @@ func (m *HTTPCheck) URI() string {
 		return m.uri
 	}
 
-	uri := url.URL{
-		Scheme: "http",
-		Host:   netip.AddrPortFrom(m.config.ConnectIP, m.config.ConnectPort.Value()).String(),
-		Path:   m.config.Path,
-	}
+	schema := "http"
 	if m.tlsConfig != nil {
 		// Use HTTPS if TLS configuration is set.
-		uri.Scheme = "https"
+		schema = "https"
 	}
+	host := netip.AddrPortFrom(m.config.ConnectIP, m.config.ConnectPort.Value()).String()
 
-	return uri.String()
+	path := m.config.Path
+
+	return fmt.Sprintf("%s://%s%s", schema, host, path)
 }
 
 // newRequest creates a new HTTP request with the provided context and metadata.
@@ -156,19 +180,18 @@ func (m *HTTPCheck) newRequest(ctx context.Context, md *Metadata) (*http.Request
 // the response details.
 func (m *HTTPCheck) handle(md *Metadata, response *http.Response) error {
 	if !m.matchStatusCode(response.StatusCode) {
-		// Return error if status code mismatch.
-		return fmt.Errorf("status code does not match: %d", response.StatusCode)
+		return errHTTPStatusCode.Extend(
+			fmt.Errorf("expected %d, got %d", m.config.StatusCode, response.StatusCode),
+		)
 	}
 
 	body, err := io.ReadAll(response.Body)
 	if err != nil {
-		// Return error if reading body fails.
-		return fmt.Errorf("failed to read response body: %w", err)
+		return errHTTPReadResponse.Extend(err)
 	}
 
 	if !m.matchDigest(body) {
-		// Return error if digest mismatch.
-		return fmt.Errorf("digest does not match")
+		return errHTTPDigest
 	}
 
 	// Update metadata to indicate the connection is alive.
@@ -217,11 +240,17 @@ func (m *HTTPCheck) getWeightFrom(response *http.Response, body []byte) weight.W
 			return weight.Omitted
 		}
 	} else {
+		// Get only the first line of the body.
+		firstBodyLine, _, _ := bytes.Cut(body, []byte("\n"))
+
+		// Cut the weight prefix from the line if so.
 		var found bool
-		if weightBuf, found = bytes.CutPrefix(body, []byte("rs_weight=")); !found {
+		if weightBuf, found = bytes.CutPrefix(firstBodyLine, []byte("rs_weight=")); !found {
 			// Return omitted if weight prefix is not found in body.
 			return weight.Omitted
 		}
+		// Additionally trim spaces.
+		weightBuf = bytes.TrimSpace(weightBuf)
 	}
 
 	var weight weight.Weight

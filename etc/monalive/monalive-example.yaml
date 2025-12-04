@@ -80,4 +80,15 @@ check_tun:
   # Socket buffer size.
   socket_buffer: 10485760
   # Receiving buffer size.
-  receive_buffer: 1000
+  receive_buffer: 1500
+
+# Experimental features.
+experiments:
+  enabled: false
+  # replace_mh_with is value that will be used to replace MH. If the value is
+  # set and the LVSSheduler of the virtual service is set to MH, LVSSheduler
+  # value will be replaced by new value.
+  replace_mh_with: ch
+  # EnableTLSSNI is the flag to enable TLS SNI in HTTPs and gRPC checks. If set,
+	# virtualhost will be used as a value.
+  enable_tls_sni: false

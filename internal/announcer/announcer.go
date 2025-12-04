@@ -8,19 +8,25 @@ package announcer
 import (
 	"errors"
 	"fmt"
-	"log/slog"
 	"net/netip"
 	"sync"
 	"time"
 
+	log "go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/yanet-platform/monalive/internal/types/key"
+	event "github.com/yanet-platform/monalive/internal/utils/event_registry"
 	"github.com/yanet-platform/monalive/internal/utils/shutdown"
 )
 
-// ErrShutdown is returned when the announcer is shutdown.
-var ErrShutdown = errors.New("announcer is shutdown")
+var (
+	// ErrShutdown is returned when the announcer is shutdown.
+	ErrShutdown = errors.New("announcer is shutdown")
+
+	// ErrUnknownGroup is returned when the prefix group is not found.
+	ErrUnknownGroup = errors.New("unknown group")
+)
 
 // Client is an interface that defines methods that external announcer client
 // must implements. It includes methods for raising and removing announces,
@@ -49,21 +55,27 @@ type Stater interface {
 // groups. It maintains the configuration, announcer client, and internal state
 // required to synchronize prefix statuses and handle updates.
 type Announcer struct {
-	config   *Config
-	prefixes PrefixesGroups     // groups of prefixes associated with their respective services
-	client   Client             // client to communicate with an external announcer instance
+	config *Config
+	client Client // client to communicate with an external announcer instance
+
+	prefixes             *Prefixes                                   // prefixes associated with their respective services
+	announceGroups       *AnnounceGroupRegistry                      // contains association between prefix and it's announce group
+	serviceEventRegistry *event.Registry[key.Service, ServiceStatus] // stores service status updates using the service as a key
+
 	shutdown *shutdown.Shutdown // shutdown mechanism to handle graceful termination
-	log      *slog.Logger
+	log      *log.Logger
 }
 
 // New creates a new instance of Announcer.
-func New(config *Config, client Client, logger *slog.Logger) *Announcer {
+func New(config *Config, client Client, logger *log.Logger) *Announcer {
 	return &Announcer{
-		config:   config,
-		prefixes: NewPrefixesGroups(config.AnnounceGroup),
-		client:   client,
-		shutdown: shutdown.New(),
-		log:      logger,
+		config:               config,
+		client:               client,
+		prefixes:             NewPrefixes(),
+		serviceEventRegistry: event.NewRegistry[key.Service, ServiceStatus](),
+		announceGroups:       NewAnnounceGroupRegistry(config.AnnounceGroup),
+		shutdown:             shutdown.New(),
+		log:                  logger,
 	}
 }
 
@@ -91,31 +103,54 @@ func (m *Announcer) Run() error {
 	return wg.Wait()
 }
 
-// UpdateService updates the status of a service in a specific group.
+// RegisterServiceEvent stores passed status of the service to the event
+// registry.
+func (m *Announcer) RegisterServiceEvent(service key.Service, status ServiceStatus) {
+	m.serviceEventRegistry.Store(service, status)
+}
+
+// FlushServiceEvents flushes all service events from the event registry and
+// returns them.
+func (m *Announcer) FlushServiceEvents() map[key.Service]ServiceStatus {
+	return m.serviceEventRegistry.Flush()
+}
+
+// UpdateService updates the status of a service.
 //
 // Changing the status of service may change it's host prefix announce depending
 // on the status of other services with the same host prefix.
-func (m *Announcer) UpdateService(group string, service key.Service, enable bool) error {
-	prefixesGroup := m.prefixes.GetGroup(group)
-	return prefixesGroup.UpdateService(service, enable)
+func (m *Announcer) UpdateService(service key.Service, status ServiceStatus) error {
+	_, exists := m.announceGroups.GetGroup(service.Prefix())
+	if !exists {
+		return fmt.Errorf("failed to determine announce group for the prefix %q", service.Prefix())
+	}
+
+	return m.prefixes.UpdateService(service, status)
 }
 
-// ReloadServices reloads the list of services for each announce group. Its also
-// updates current host prefix statuses according to the new services
-// configuration.
-func (m *Announcer) ReloadServices(servicesGroups map[string][]key.Service) error {
-	// Validate announce groups before performing reload.
-	for group := range servicesGroups {
-		if prefixesGroup := m.prefixes.GetGroup(group); prefixesGroup == nil {
-			return fmt.Errorf("unknown group %q", group)
+// ReloadServices reloads the list of services for each prefix. Its also updates
+// current host prefix statuses according to the new services configuration.
+func (m *Announcer) ReloadServices(services map[key.Service]string) error {
+	// Construct mapping of prefixes to their announce group.
+	groupByPrefix := make(map[netip.Prefix]string)
+	for service, group := range services {
+		// Validate announce group.
+		if !m.announceGroups.ContainsGroup(group) {
+			return fmt.Errorf("%w: %q", ErrUnknownGroup, group)
 		}
+
+		prefix := service.Prefix()
+
+		// Prevent duplication of prefixes in differrent groups.
+		if knownGroup, exists := groupByPrefix[prefix]; exists && knownGroup != group {
+			return fmt.Errorf("duplicate announce group prefix: %s", prefix)
+		}
+
+		groupByPrefix[prefix] = group
 	}
 
-	// Reload services for each group.
-	for group, services := range servicesGroups {
-		prefixesGroup := m.prefixes.GetGroup(group)
-		prefixesGroup.ReloadServices(services)
-	}
+	m.prefixes.ReloadServices(services)
+	m.announceGroups.Update(groupByPrefix)
 
 	return nil
 }
@@ -135,31 +170,8 @@ func (m *Announcer) Stop() {
 // updater periodically sends new updated prefix statuses to an external
 // announcer instance.
 func (m *Announcer) updater() {
-	var wg sync.WaitGroup
-
-	// Set the wait group counter to the number of update workers.
-	wg.Add(len(m.config.AnnounceGroup))
-
-	// Launch an updater goroutine for each group.
-	for _, group := range m.config.AnnounceGroup {
-		go func() {
-			defer wg.Done()
-			m.groupUpdater(group)
-		}()
-	}
-
-	// Wait for all updater goroutines to complete.
-	wg.Wait()
-}
-
-// groupUpdater is a worker of [updater] routine that periodically sends updated
-// prefix statuses for specified announce group to an external announcer
-// instance.
-func (m *Announcer) groupUpdater(group string) {
-	prefixesGroup := m.prefixes.GetGroup(group)
-
-	updateTimer := time.NewTimer(m.config.UpdatePeriod)
-	defer updateTimer.Stop()
+	updateTicker := time.NewTicker(m.config.UpdatePeriod)
+	defer updateTicker.Stop()
 
 	for {
 		select {
@@ -167,20 +179,33 @@ func (m *Announcer) groupUpdater(group string) {
 			// Exit if a shutdown signal is received.
 			return
 
-		case <-updateTimer.C:
+		case <-updateTicker.C:
 			// Check and process any prefix status updates.
-			events := prefixesGroup.Events()
+			events := m.prefixes.Events()
 			if len(events) == 0 {
 				continue
 			}
 
+			// Group the events by announce group.
+			eventsByGroup := make(map[string]map[netip.Prefix]PrefixStatus)
+			for prefixKey, status := range events {
+				prefix := prefixKey.Prefix
+				group := prefixKey.Group
+				if _, exists := eventsByGroup[group]; !exists {
+					eventsByGroup[group] = make(map[netip.Prefix]PrefixStatus)
+				}
+				eventsByGroup[group][prefix] = status
+			}
+
 			// Send the update events to the client for processing.
-			if err := m.client.ProcessBatch(group, events); err != nil {
-				m.log.Error(
-					"failed to sync announces state",
-					slog.String("group_name", group),
-					slog.Any("error", err),
-				)
+			for group, events := range eventsByGroup {
+				if err := m.client.ProcessBatch(group, events); err != nil {
+					m.log.Error(
+						"failed to sync announces state",
+						log.String("group_name", group),
+						log.Error(err),
+					)
+				}
 			}
 		}
 	}
@@ -199,7 +224,6 @@ func (m *Announcer) stateRequestHandler() error {
 	// Listen for state requests for each group.
 	for _, group := range m.config.AnnounceGroup {
 		wg.Go(func() error {
-			prefixesGroup := m.prefixes.GetGroup(group)
 			for {
 				// Handle state requests for the group.
 				if err := client.ListenStateRequest(group); err != nil {
@@ -211,19 +235,23 @@ func (m *Announcer) stateRequestHandler() error {
 					// lifecycle of the worker.
 					m.log.Error(
 						"failed to handle state request",
-						slog.String("group_name", group),
-						slog.Any("error", err),
+						log.String("group_name", group),
+						log.Error(err),
 					)
 					continue
 				}
 
-				// Respond with the current prefix statuses.
-				prefixesStatus := prefixesGroup.Status()
-				if err := m.client.ProcessBatch(group, prefixesStatus); err != nil {
+				// Retrieve the current prefix statuses for the requested group.
+				prefixes := m.announceGroups.GetPrefixes(group)
+				status := m.prefixes.StatusFor(prefixes)
+
+				// Respond with the current prefix statuses for the requested
+				// group.
+				if err := m.client.ProcessBatch(group, status); err != nil {
 					m.log.Error(
 						"failed to sync announces state",
-						slog.String("group_name", group),
-						slog.Any("error", err),
+						log.String("group_name", group),
+						log.Error(err),
 					)
 				}
 			}
@@ -239,10 +267,15 @@ func (m *Announcer) stateRequestHandler() error {
 // remain active.
 func (m *Announcer) removeAll() {
 	for _, group := range m.config.AnnounceGroup {
-		prefixesStatus := m.prefixes.GetGroup(group).Status()
+		prefixes := m.announceGroups.GetPrefixes(group)
+		if len(prefixes) == 0 {
+			continue
+		}
+
+		prefixesStatus := make(map[netip.Prefix]PrefixStatus, len(prefixes))
 
 		// Mark all prefixes as Unready to indicate they are being removed.
-		for prefix := range prefixesStatus {
+		for _, prefix := range prefixes {
 			prefixesStatus[prefix] = Unready
 		}
 
@@ -250,9 +283,70 @@ func (m *Announcer) removeAll() {
 		if err := m.client.ProcessBatch(group, prefixesStatus); err != nil {
 			m.log.Error(
 				"failed to remove announces",
-				slog.String("group_name", group),
-				slog.Any("error", err),
+				log.String("group_name", group),
+				log.Error(err),
 			)
 		}
 	}
+}
+
+// AnnounceGroupRegistry is a store for announce groups and their associated
+// prefixes.
+type AnnounceGroupRegistry struct {
+	groups          map[string]struct{}
+	groupByPrefix   map[netip.Prefix]string
+	prefixesByGroup map[string][]netip.Prefix
+	mu              sync.RWMutex // to protect concurent access to the store map
+}
+
+// NewAnnounceGroupRegistry creates a new instance of AnnounceGroupRegistry with
+// passed list of groups.
+func NewAnnounceGroupRegistry(groups []string) *AnnounceGroupRegistry {
+	groupSet := make(map[string]struct{}, len(groups))
+	for _, group := range groups {
+		groupSet[group] = struct{}{}
+	}
+	return &AnnounceGroupRegistry{
+		groups:          groupSet,
+		groupByPrefix:   make(map[netip.Prefix]string),
+		prefixesByGroup: make(map[string][]netip.Prefix),
+	}
+}
+
+// GetGroup retrieves the announce group associated with the given
+// prefix.
+func (m *AnnounceGroupRegistry) GetGroup(prefix netip.Prefix) (group string, exists bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	group, exists = m.groupByPrefix[prefix]
+	return group, exists
+}
+
+// ContainsGroup checks if the given announce group exists in the registry.
+func (m *AnnounceGroupRegistry) ContainsGroup(group string) bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	_, exists := m.groups[group]
+	return exists
+}
+
+// GetPrefixes retrieves the prefixes associated with the given announce group.
+func (m *AnnounceGroupRegistry) GetPrefixes(group string) (prefixes []netip.Prefix) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.prefixesByGroup[group]
+}
+
+// Update updates the mapping of prefixes to their corresponding announce group.
+func (m *AnnounceGroupRegistry) Update(groupByPrefix map[netip.Prefix]string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	prefixesByGroup := make(map[string][]netip.Prefix)
+	for prefix, group := range groupByPrefix {
+		prefixesByGroup[group] = append(prefixesByGroup[group], prefix)
+	}
+	m.prefixesByGroup = prefixesByGroup
+
+	m.groupByPrefix = groupByPrefix
 }

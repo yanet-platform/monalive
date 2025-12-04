@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
-	"log/slog"
 	"math"
 	"net/netip"
 	"sync"
@@ -14,6 +13,8 @@ import (
 	"github.com/google/gopacket/layers"
 	"github.com/yanet-platform/go-nfqueue/v2"
 	"github.com/yanet-platform/netlink"
+	log "go.uber.org/zap"
+
 	"golang.org/x/net/ipv4"
 	"golang.org/x/net/ipv6"
 )
@@ -52,13 +53,11 @@ func (d *tunMessage) getSockaddr() (syscall.Sockaddr, error) {
 }
 
 type CheckTun struct {
-	nf *nfqueue.Nfqueue
-
-	logger *slog.Logger
 	config Config
+	nf     *nfqueue.Nfqueue
 
-	IPv4Bind netip.Addr
-	IPv6Bind netip.Addr
+	ipv4Bind netip.Addr
+	ipv6Bind netip.Addr
 
 	readChan    chan []byte
 	verdictChan chan uint32
@@ -67,81 +66,96 @@ type CheckTun struct {
 	packetInQueueMutex sync.Mutex
 
 	sockets map[int]map[int]int
+
+	logger *log.Logger
 }
 
-func New(config Config, logger *slog.Logger) *CheckTun {
-	logger = logger.With(slog.String("event_type", "yanet"))
+func New(config Config, logger *log.Logger) (*CheckTun, error) {
+	logger = logger.With(log.String("event_type", "checktun"))
 
-	readChan := make(chan []byte)
-	verdictChan := make(chan uint32)
-
-	return &CheckTun{
-		sockets:     make(map[int]map[int]int),
+	checkTun := &CheckTun{
 		config:      config,
+		sockets:     make(map[int]map[int]int),
+		readChan:    make(chan []byte),
+		verdictChan: make(chan uint32),
 		logger:      logger,
-		readChan:    readChan,
-		verdictChan: verdictChan,
 	}
-}
 
-func (c *CheckTun) Run(ctx context.Context) error {
-	config := &nfqueue.Config{
-		NfQueue:       c.config.NfQueue,
-		MaxPacketLen:  c.config.MaxPacketLen,
-		MaxQueueLen:   c.config.MaxQueueLen,
+	nfqConfig := &nfqueue.Config{
+		NfQueue:       config.NfQueue,
+		MaxPacketLen:  config.MaxPacketLen,
+		MaxQueueLen:   config.MaxQueueLen,
 		Copymode:      nfqueue.NfQnlCopyPacket,
-		WriteTimeout:  c.config.WriteTimeout,
-		WorkerNum:     c.config.WorkerNum,
-		ReceiveBuffer: c.config.ReceiveBuffer,
+		WriteTimeout:  config.WriteTimeout,
+		WorkerNum:     config.WorkerNum,
+		ReceiveBuffer: config.ReceiveBuffer,
 	}
 
-	if ip, err := netip.ParseAddr(c.config.IPv4Bind); err == nil {
-		c.IPv4Bind = ip
+	if ip, err := netip.ParseAddr(config.IPv4Bind); err == nil {
+		checkTun.ipv4Bind = ip
 	}
 
-	if ip, err := netip.ParseAddr(c.config.IPv6Bind); err == nil {
-		c.IPv6Bind = ip
+	if ip, err := netip.ParseAddr(config.IPv6Bind); err == nil {
+		checkTun.ipv6Bind = ip
 	}
 
-	nf, err := nfqueue.Open(config)
+	nf, err := nfqueue.Open(nfqConfig)
 	if err != nil {
-		return fmt.Errorf("could not open nfqueue socket: %w", err)
+		return nil, fmt.Errorf("failed to open nfqueue socket: %w", err)
 	}
 
 	if err := nf.Con.SetOption(netlink.NoENOBUFS, true); err != nil {
-		return fmt.Errorf("set option: %w", err)
+		return nil, fmt.Errorf("failed to set option: %w", err)
 	}
 
-	if err := nf.Con.SetReadBuffer(c.config.SocketBuffer); err != nil {
-		return fmt.Errorf("failed to set read buffer: %w", err)
+	if err := nf.Con.SetReadBuffer(config.SocketBuffer); err != nil {
+		return nil, fmt.Errorf("failed to set read buffer: %w", err)
 	}
 
-	if err := c.initSockets(); err != nil {
-		return fmt.Errorf("init socket: %w", err)
+	domains := []int{syscall.AF_INET, syscall.AF_INET6}
+	protos := []int{syscall.IPPROTO_IPIP, syscall.IPPROTO_IPV6, syscall.IPPROTO_GRE}
+	sockets := make(map[int]map[int]int)
+	for _, domain := range domains {
+		for _, proto := range protos {
+			fd, err := checkTun.newSocket(domain, proto)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create socket: %w", err)
+			}
+
+			if _, ok := sockets[domain]; !ok {
+				sockets[domain] = make(map[int]int)
+			}
+
+			sockets[domain][proto] = fd
+		}
 	}
 
-	err = nf.RegisterWithErrorFunc(ctx, c.nfqueueHandler, func(err error) int {
+	checkTun.nf = nf
+
+	return checkTun, nil
+}
+
+func (c *CheckTun) Run(ctx context.Context) error {
+	err := c.nf.RegisterWithErrorFunc(ctx, c.nfqueueHandler, func(err error) int {
 		if opError, ok := err.(*netlink.OpError); ok {
 			if opError.Timeout() || opError.Temporary() {
 				return 0
 			}
 		}
 
-		c.logger.Error("could not receive message", slog.Any("error", err))
+		c.logger.Error("could not receive message", log.Error(err))
 		return 0
 	})
 	if err != nil {
-		return fmt.Errorf("register function as callback: %w", err)
+		return fmt.Errorf("failed to register function as callback: %w", err)
 	}
-
-	c.nf = nf
 
 	return nil
 }
 
 func (c *CheckTun) Stop() {
 	if err := c.nf.Close(); err != nil {
-		c.logger.Error("check tun close", slog.Any("error", err))
+		c.logger.Error("check tun close", log.Error(err))
 	}
 }
 
@@ -208,48 +222,25 @@ func (c *CheckTun) getSocket(message *tunMessage) (int, error) {
 	return 0, fmt.Errorf("udefined socket")
 }
 
-func (c *CheckTun) initSockets() error {
-	domains := []int{syscall.AF_INET, syscall.AF_INET6}
-	protos := []int{syscall.IPPROTO_IPIP, syscall.IPPROTO_IPV6, syscall.IPPROTO_GRE}
-
-	for _, domain := range domains {
-		for _, proto := range protos {
-			fd, err := c.newSocket(domain, proto)
-			if err != nil {
-				return fmt.Errorf("new socket: %w", err)
-			}
-
-			if _, ok := c.sockets[domain]; !ok {
-				c.sockets[domain] = make(map[int]int)
-			}
-
-			c.sockets[domain][proto] = fd
-		}
-	}
-
-	return nil
-}
-
 func (c *CheckTun) newSocket(domain, proto int) (int, error) {
 	fd, err := syscall.Socket(domain, syscall.SOCK_RAW, proto)
 	if err != nil {
-		return 0, fmt.Errorf("init socket: %w", err)
+		return 0, fmt.Errorf("fialed to init socket: %w", err)
 	}
-
+	var bindTo netip.Addr
 	var addr syscall.Sockaddr
-	if domain == syscall.AF_INET && c.IPv4Bind.Is4() {
-		addr = &syscall.SockaddrInet4{Addr: c.IPv4Bind.As4()}
-	} else if domain == syscall.AF_INET6 && c.IPv6Bind.Is6() {
-		addr = &syscall.SockaddrInet6{Addr: c.IPv6Bind.As16()}
+	if domain == syscall.AF_INET && c.ipv4Bind.Is4() {
+		bindTo = c.ipv4Bind
+		addr = &syscall.SockaddrInet4{Addr: c.ipv4Bind.As4()}
+	} else if domain == syscall.AF_INET6 && c.ipv6Bind.Is6() {
+		bindTo = c.ipv6Bind
+		addr = &syscall.SockaddrInet6{Addr: c.ipv6Bind.As16()}
 	}
-
 	if addr != nil {
-		err := syscall.Bind(fd, addr)
-		if err != nil {
-			return 0, fmt.Errorf("bind ip error")
+		if err := syscall.Bind(fd, addr); err != nil {
+			return 0, fmt.Errorf("failed to bind ip %q: %w", bindTo, err)
 		}
 	}
-
 	return fd, nil
 }
 
@@ -331,7 +322,7 @@ func (c *CheckTun) nfqueueHandler(a nfqueue.Attribute) int {
 	}
 
 	if err := c.dropPacket(*a.PacketID); err != nil {
-		c.logger.Error("failed to drop packet", slog.Any("error", err))
+		c.logger.Error("failed to drop packet", log.Error(err))
 	}
 
 	if a.Mark != nil && *a.Mark == math.MaxUint32 {
@@ -340,7 +331,7 @@ func (c *CheckTun) nfqueueHandler(a nfqueue.Attribute) int {
 		}
 
 		if err := c.encapsulatePacket(*a.Payload); err != nil {
-			c.logger.Error("failed to encapsulate packet", slog.Any("error", err))
+			c.logger.Error("failed to encapsulate packet", log.Error(err))
 		}
 	}
 

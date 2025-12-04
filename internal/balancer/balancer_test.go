@@ -9,8 +9,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	log "go.uber.org/zap"
 
-	"github.com/yanet-platform/monalive/internal/monitoring/xlog"
 	"github.com/yanet-platform/monalive/internal/types/key"
 	"github.com/yanet-platform/monalive/internal/types/xevent"
 )
@@ -51,7 +51,7 @@ func defaultKey() key.Balancer {
 // correctly handled and stored in the balancer's events map with the correct
 // new and initial status.
 func TestBalancer_HandleEvent_Basic(t *testing.T) {
-	balancer := New(&Config{}, &mockBalancerClient{}, xlog.NewNopLogger())
+	balancer := New(&Config{}, &mockBalancerClient{}, nil, log.NewNop())
 
 	// Define a default key and initial status.
 	key := defaultKey()
@@ -76,7 +76,7 @@ func TestBalancer_HandleEvent_Basic(t *testing.T) {
 // struct to ensure it updates the event status correctly. It verifies that the
 // new status is recorded after multiple updates.
 func TestBalancer_HandleEvent_Update(t *testing.T) {
-	balancer := New(&Config{}, &mockBalancerClient{}, xlog.NewNopLogger())
+	balancer := New(&Config{}, &mockBalancerClient{}, nil, log.NewNop())
 
 	// Define a default key and initial status.
 	key := defaultKey()
@@ -118,7 +118,7 @@ func TestBalancer_HandleEvent_Update(t *testing.T) {
 // that the event is correctly removed from the balancer's events map when the
 // status is changed to disablement.
 func TestBalancer_HandleEvent_RemoveEnable(t *testing.T) {
-	balancer := New(&Config{}, &mockBalancerClient{}, xlog.NewNopLogger())
+	balancer := New(&Config{}, &mockBalancerClient{}, nil, log.NewNop())
 
 	// Define a default key and initial status.
 	key := defaultKey()
@@ -158,7 +158,7 @@ func TestBalancer_HandleEvent_RemoveEnable(t *testing.T) {
 // that the event is correctly removed from the balancer's events map when the
 // status is updated to disablement.
 func TestBalancer_HandleEvent_RemoveDisable(t *testing.T) {
-	balancer := New(&Config{}, &mockBalancerClient{}, xlog.NewNopLogger())
+	balancer := New(&Config{}, &mockBalancerClient{}, nil, log.NewNop())
 
 	// Define a default key and initial status.
 	key := defaultKey()
@@ -197,7 +197,7 @@ func TestBalancer_HandleEvent_RemoveDisable(t *testing.T) {
 // when the key already exists in the balancer state. It verifies that the
 // subscription returns nil, indicating no notification is needed.
 func TestBalancer_LookupSubscription_KeyExists(t *testing.T) {
-	balancer := New(&Config{}, &mockBalancerClientWithStates{}, xlog.NewNopLogger())
+	balancer := New(&Config{}, &mockBalancerClientWithStates{}, nil, log.NewNop())
 
 	// [BEGIN] Fill up balancer state.
 	balancerKey := defaultKey()
@@ -236,7 +236,7 @@ func TestBalancer_LookupSubscription_KeyExists(t *testing.T) {
 // when a key is added to the balancer state. It verifies that the subscription
 // receives a notification when the state is updated.
 func TestBalancer_LookupSubscription_KeyAdded(t *testing.T) {
-	balancer := New(&Config{}, &mockBalancerClientWithStates{}, xlog.NewNopLogger())
+	balancer := New(&Config{}, &mockBalancerClientWithStates{}, nil, log.NewNop())
 
 	// [BEGIN] Construct balancer state update.
 	balancerKey := defaultKey()
@@ -292,7 +292,7 @@ func TestBalancer_LookupSubscription_KeyAdded(t *testing.T) {
 // method when the context is canceled before the key is added to the balancer
 // state. It verifies that the context cancellation is handled properly.
 func TestBalancer_LookupSubscription_ContextCancel(t *testing.T) {
-	balancer := New(&Config{}, &mockBalancerClientWithStates{}, xlog.NewNopLogger())
+	balancer := New(&Config{}, &mockBalancerClientWithStates{}, nil, log.NewNop())
 
 	notExistingKey := defaultKey()
 	notExistingKey.Service.Addr = netip.MustParseAddr("127.0.1.1")
@@ -320,7 +320,7 @@ func TestBalancer_LookupSubscription_ContextCancel(t *testing.T) {
 // verifies that the context remains valid and no errors are returned after the
 // balancer stops.
 func TestBalancer_LookupSubscription_BalancerStopped(t *testing.T) {
-	balancer := New(&Config{}, &mockBalancerClientWithStates{}, xlog.NewNopLogger())
+	balancer := New(&Config{}, &mockBalancerClientWithStates{}, nil, log.NewNop())
 
 	notExistingKey := defaultKey()
 	notExistingKey.Service.Addr = netip.MustParseAddr("127.0.1.1")
@@ -353,7 +353,7 @@ func TestBalancer_LookupSubscription_BalancerStopped(t *testing.T) {
 // subscription returns nil, indicating no notifications are available for
 // non-existing keys.
 func TestBalancer_LookupSubscription_WithoutState(t *testing.T) {
-	balancer := New(&Config{}, &mockBalancerClient{}, xlog.NewNopLogger())
+	balancer := New(&Config{}, &mockBalancerClient{}, nil, log.NewNop())
 
 	ctx := context.Background()
 	// Test subscription lookup for a key when no state is present.

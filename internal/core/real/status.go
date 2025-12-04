@@ -13,6 +13,10 @@ func (m *Real) Status() *monalivepb.RealStatus {
 	defer m.checkersMu.Unlock()
 
 	state := m.State()
+	alive := uint32(0)
+	if state.Alive {
+		alive = 1
+	}
 
 	// Create a slice to hold the statuses of real's checkers.
 	checkerStatus := make([]*monalivepb.CheckerStatus, 0, len(m.checkers))
@@ -25,7 +29,7 @@ func (m *Real) Status() *monalivepb.RealStatus {
 	return &monalivepb.RealStatus{
 		Ip:          m.config.IP.String(),
 		Port:        m.config.Port.ProtoMarshaller(),
-		Alive:       state.Alive,
+		Alive:       alive,
 		Weight:      state.Weight.Uint32(),
 		Transitions: uint32(state.Transitions),
 		Checkers:    checkerStatus,

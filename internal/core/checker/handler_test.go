@@ -6,9 +6,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	log "go.uber.org/zap"
 
 	"github.com/yanet-platform/monalive/internal/core/checker/check"
-	"github.com/yanet-platform/monalive/internal/monitoring/xlog"
 	"github.com/yanet-platform/monalive/internal/scheduler"
 	"github.com/yanet-platform/monalive/internal/types/weight"
 	"github.com/yanet-platform/monalive/internal/types/xevent"
@@ -55,7 +55,7 @@ func defaultChecker(handler xevent.Handler, weight weight.Weight) *Checker {
 		},
 	}
 
-	return New(config, handler, weight, xnet.ForwardingData{}, xlog.NewNopLogger())
+	return New(config, handler, weight, xnet.ForwardingData{}, log.NewNop())
 }
 
 // WithRetries configures the Checker to use retries by setting the retries

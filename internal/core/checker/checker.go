@@ -6,9 +6,10 @@ package checker
 import (
 	"context"
 	"errors"
-	"log/slog"
 	"sync"
 	"time"
+
+	log "go.uber.org/zap"
 
 	"github.com/yanet-platform/monalive/internal/core/checker/check"
 	"github.com/yanet-platform/monalive/internal/scheduler"
@@ -39,8 +40,10 @@ type Checker struct {
 	handler  xevent.Handler // callback event handler function provided by the parent real
 	eventsWG sync.WaitGroup // to manage goroutines handling events
 
+	metrics *Metrics
+
 	shutdown *shutdown.Shutdown
-	log      *slog.Logger
+	log      *log.Logger
 }
 
 // State represents the current state of the Checker.
@@ -49,13 +52,18 @@ type State struct {
 	Alive          bool
 	FailedAttempts int
 	Timestamp      time.Time
+
+	// ManualChanged is a flag indicates that configuration of checker has
+	// changed manually.
+	ManualChanged bool
 }
 
 // New creates a new Checker instance.
-func New(config *Config, handler xevent.Handler, weight weight.Weight, forwardingData xnet.ForwardingData, logger *slog.Logger) *Checker {
+func New(config *Config, handler xevent.Handler, weight weight.Weight, forwardingData xnet.ForwardingData, logger *log.Logger) *Checker {
 	checker := &Checker{
 		config:   config,
 		handler:  handler,
+		metrics:  NewMetrics(),
 		shutdown: shutdown.New(),
 	}
 
@@ -94,9 +102,9 @@ func New(config *Config, handler xevent.Handler, weight weight.Weight, forwardin
 	// Enhance the logger with context-specific information like URI and meta
 	// information.
 	checker.log = logger.With(
-		slog.String("uri", uri),
-		slog.Int("fwmark", config.Net.FWMark),
-		slog.String("meta", meta),
+		log.String("uri", uri),
+		log.Int("fwmark", config.Net.FWMark),
+		log.String("meta", meta),
 	)
 
 	return checker
@@ -110,10 +118,13 @@ func (m *Checker) Run(ctx context.Context) {
 	scheduler := scheduler.New(m.config.Scheduler, scheduler.WithInitialDelay())
 	m.log.Info(
 		"running checker",
-		slog.Duration("delay", scheduler.InitialDelay()),
-		slog.String("event_type", "checker update"),
+		log.Duration("delay", scheduler.InitialDelay()),
+		log.String("event_type", "checker update"),
 	)
-	defer m.log.Info("checker stopped", slog.String("event_type", "checker update"))
+	defer m.log.Info("checker stopped", log.String("event_type", "checker update"))
+
+	// Blocks access to the metrics after launching cheker.
+	m.metrics.Block()
 
 	// Preventively increment the event counter so that checker's Stop function
 	// doesn't complete until the shutdown event is handled properly.
@@ -153,8 +164,14 @@ func (m *Checker) Run(ctx context.Context) {
 			Weight: currState.Weight,
 		}
 
+		start := time.Now()
 		// Perform the check operation.
 		opErr := m.check.Do(ctx, &md)
+		m.metrics.ResponseTime().Observe(time.Since(start).Seconds())
+
+		// Force check result processing if the configuration has changed
+		// manually.
+		md.Force = currState.ManualChanged
 
 		// Process the result of the check operation.
 		m.ProcessCheck(md, opErr)
@@ -172,10 +189,28 @@ func (m *Checker) Stop() {
 	m.eventsWG.Wait()
 }
 
+func (m *Checker) UpdateWeight(weight weight.Weight) {
+	m.stateMu.Lock()
+	defer m.stateMu.Unlock()
+	m.log.Info(
+		"updating weight",
+		log.Int("weight", int(weight)),
+		log.String("event_type", "checker update"),
+	)
+	m.state.Weight = weight
+	m.state.ManualChanged = true
+}
+
 // State returns the current state of the checker.
 func (m *Checker) State() State {
 	m.stateMu.RLock()
 	defer m.stateMu.RUnlock()
 
 	return m.state
+}
+
+func (m *Checker) SetMetrics(setMetricFunc ...SetMetricFunc) {
+	for _, f := range setMetricFunc {
+		f(m.metrics)
+	}
 }

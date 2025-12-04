@@ -11,6 +11,10 @@ import (
 // the checker.
 func (m *Checker) Status() *monalivepb.CheckerStatus {
 	state := m.State()
+	alive := uint32(0)
+	if state.Alive {
+		alive = 1
+	}
 	return &monalivepb.CheckerStatus{
 		Type: m.config.Type.String(),
 
@@ -34,7 +38,7 @@ func (m *Checker) Status() *monalivepb.CheckerStatus {
 		Retries:    uint32(m.config.GetRetries()),
 		RetryDelay: durationpb.New(m.config.GetRetryDelay()),
 
-		Alive:          state.Alive,
+		Alive:          alive,
 		FailedAttempts: uint32(state.FailedAttempts),
 		LastCheckTs:    timestamppb.New(state.Timestamp),
 	}

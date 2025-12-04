@@ -3,9 +3,11 @@ package real
 
 import (
 	"context"
-	"log/slog"
 	"slices"
 	"sync"
+	"time"
+
+	log "go.uber.org/zap"
 
 	"github.com/yanet-platform/monalive/internal/core/checker"
 	"github.com/yanet-platform/monalive/internal/types/key"
@@ -41,10 +43,14 @@ type Real struct {
 	handler  xevent.Handler // callback event handler function provided by the parent service
 	eventsWG sync.WaitGroup // to manage goroutines handling events
 
-	activationFunc ActivationFunc // used to control the activation of the real if necessary
+	metrics *Metrics
 
+	activationFunc ActivationFunc // used to control the activation of the real if necessary
+	isActive       bool
+
+	reloadMu sync.Mutex // to prevent concurrent config updates
 	shutdown *shutdown.Shutdown
-	log      *slog.Logger
+	log      *log.Logger
 }
 
 // State represents the current state of the real.
@@ -55,6 +61,9 @@ type State struct {
 
 	// Whether dynamic weight calculation is supported by the real.
 	DynWeight bool
+
+	// TransitionTimestamp is the timestamp when the last transition occurred.
+	TransitionTimestamp time.Time
 
 	// If checker reports a failure and the inhibit_on_failure option is set in
 	// the real's config, then instead of disabling it, we keep it enabled, but
@@ -94,12 +103,12 @@ func WithActivationFunc(activation ActivationFunc) Option {
 }
 
 // New creates a new Real instance.
-func New(config *Config, handler xevent.Handler, logger *slog.Logger, opts ...Option) *Real {
+func New(config *Config, handler xevent.Handler, logger *log.Logger, opts ...Option) *Real {
 	logger = logger.With(
-		slog.String("virtual_ip", config.IP.String()),
-		slog.String("port", config.Port.String()),
+		log.String("real_ip", config.IP.String()),
+		log.String("real_port", config.Port.String()),
 	)
-	defer logger.Info("real created", slog.String("event_type", "real update"))
+	defer logger.Info("real created", log.String("event_type", "real update"))
 
 	real := &Real{
 		config:       config,
@@ -107,6 +116,7 @@ func New(config *Config, handler xevent.Handler, logger *slog.Logger, opts ...Op
 		checkers:     make(map[checker.Key]*checker.Checker),
 		checkersPool: workerpool.New(),
 		handler:      handler,
+		metrics:      NewMetrics(),
 		shutdown:     shutdown.New(),
 		log:          logger,
 	}
@@ -131,11 +141,20 @@ func (m *Real) Run(ctx context.Context) {
 		return
 	}
 
-	m.log.Info("running real", slog.String("event_type", "real update"))
-	defer m.log.Info("real stopped", slog.String("event_type", "real update"))
+	m.log.Info("running real", log.String("event_type", "real update"))
+	defer m.log.Info("real stopped", log.String("event_type", "real update"))
+
+	// Blocks access to the metrics after launching real.
+	m.metrics.Block()
 
 	// Reload to apply initial checkers configuration.
-	go m.Reload(m.config)
+	go func() {
+		m.reloadMu.Lock()
+		defer m.reloadMu.Unlock()
+		// Mark the real as active and perform initial reload.
+		m.isActive = true
+		m.reload(m.config)
+	}()
 
 	// Run the real's worker pool.
 	m.checkersPool.Run(ctx)
@@ -144,76 +163,16 @@ func (m *Real) Run(ctx context.Context) {
 // Reload updates the configuration of the real service, stopping outdated
 // checkers and creating new ones as necessary.
 func (m *Real) Reload(config *Config) {
-	m.checkersMu.Lock()
-	defer m.checkersMu.Unlock()
+	m.reloadMu.Lock()
+	defer m.reloadMu.Unlock()
 
-	// Prepare forwarding data that will be used by the checkers.
-	forwardingData := xnet.ForwardingData{
-		RealIP:           config.IP,
-		ForwardingMethod: config.ForwardingMethod,
+	if !m.isActive {
+		// If the real is not active yet, save the new config and return early.
+		m.config = config
+		return
 	}
 
-	// Track if any checker supports dynamic weight.
-	dynamicWeight := false
-
-	// Concatenate all types of checkers from the new config into a single
-	// slice.
-	checkers := slices.Concat(
-		config.TCPCheckers,
-		config.HTTPCheckers,
-		config.HTTPSCheckers,
-		config.GRPCCheckers,
-	)
-
-	// Map to store the new set of checkers after reloading.
-	newCheckers := make(map[checker.Key]*checker.Checker)
-	for _, cfg := range checkers {
-		select {
-		// Check if the service is shutting down. If so, abort the reload.
-		case <-m.shutdown.Done():
-			m.log.Warn("reload aborted")
-			return
-
-		default:
-			key := cfg.Key()
-			switch knownChecker, exists := m.checkers[key]; exists {
-			// If a checker with the same key already exists, reuse it.
-			case true:
-				newCheckers[key] = knownChecker
-				// Remove from the old checkers map.
-				delete(m.checkers, key)
-
-			// If it's a new checker, create and initialize it.
-			case false:
-				newChecker := checker.New(
-					cfg,
-					m.HandleEvent,
-					config.Weight,
-					forwardingData,
-					m.log,
-				)
-				newCheckers[key] = newChecker
-				// Add new checker to the pool.
-				m.checkersPool.Add(newChecker)
-			}
-
-			// Update the dynamicWeight flag.
-			dynamicWeight = dynamicWeight || cfg.DynamicWeight
-		}
-	}
-
-	// Stop any remaining old checkers that were not reused.
-	for _, checker := range m.checkers {
-		// Gracefully stop each outdated checker.
-		checker.Stop()
-	}
-
-	// Update the state to reflect if dynamic weight is used.
-	m.state.DynWeight = dynamicWeight
-
-	// Save the new config and the updated set of checkers.
-	m.config = config
-	m.checkers = newCheckers
+	m.reload(config)
 }
 
 // Stop gracefully stops the real service, ensuring all checkers and event
@@ -247,6 +206,109 @@ func (m *Real) State() State {
 	m.stateMu.RLock()
 	defer m.stateMu.RUnlock()
 	return m.state
+}
+
+func (m *Real) SetMetrics(setMetricFunc ...SetMetricFunc) {
+	for _, f := range setMetricFunc {
+		f(m.metrics)
+	}
+}
+
+func (m *Real) reload(config *Config) {
+	// Prepare forwarding data that will be used by the checkers.
+	forwardingData := xnet.ForwardingData{
+		RealIP:           config.IP,
+		ForwardingMethod: config.ForwardingMethod,
+	}
+
+	// Check if the forwarding method has changed. If so, force a reload of the
+	// checkers.
+	forceReload := false
+	if m.config.ForwardingMethod != config.ForwardingMethod {
+		m.log.Info(
+			"forwarding method changed, force reload checkers",
+			log.String("event_type", "real update"),
+		)
+		forceReload = true
+	}
+
+	// Track if any checker supports dynamic weight.
+	dynamicWeight := false
+
+	// Concatenate all types of checkers from the new config into a single
+	// slice.
+	checkers := slices.Concat(
+		config.TCPCheckers,
+		config.HTTPCheckers,
+		config.HTTPSCheckers,
+		config.GRPCCheckers,
+	)
+
+	// Map to store the new set of checkers after reloading.
+	newCheckers := make(map[checker.Key]*checker.Checker)
+	for _, cfg := range checkers {
+		select {
+		// Check if the service is shutting down. If so, abort the reload.
+		case <-m.shutdown.Done():
+			m.log.Warn("reload aborted")
+			return
+
+		default:
+			key := cfg.Key()
+			switch knownChecker, exists := m.checkers[key]; exists && !forceReload {
+			// If a checker with the same key already exists, reuse it.
+			case true:
+				// The real weight is passed to the checker only once, during
+				// its initialization. Since it is possible that the weight has
+				// changed in the configuration, we need to update the checker's
+				// weight manually.
+				if m.config.Weight != config.Weight {
+					// If the weight has changed, update it.
+					knownChecker.UpdateWeight(config.Weight)
+				}
+				newCheckers[key] = knownChecker
+				// Remove from the old checkers map.
+				delete(m.checkers, key)
+
+			// If it's a new checker, create and initialize it.
+			case false:
+				newChecker := checker.New(
+					cfg,
+					m.HandleEvent,
+					config.Weight,
+					forwardingData,
+					m.log,
+				)
+				newChecker.SetMetrics(
+					checker.SetErrorsMetric(m.metrics.RealErrors()),
+					checker.SetResponceTimeMetric(m.metrics.RealResponseTime()),
+				)
+				newCheckers[key] = newChecker
+				// Add new checker to the pool.
+				m.checkersPool.Add(newChecker)
+			}
+
+			// Update the dynamicWeight flag.
+			dynamicWeight = dynamicWeight || cfg.DynamicWeight
+		}
+	}
+
+	// Stop any remaining old checkers that were not reused.
+	for _, checker := range m.checkers {
+		// Gracefully stop each outdated checker.
+		checker.Stop()
+	}
+
+	// Update the state to reflect if dynamic weight is used.
+	m.stateMu.Lock()
+	m.state.DynWeight = dynamicWeight
+	m.stateMu.Unlock()
+
+	//  Save the new config and the updated set of checkers.
+	m.config = config
+	m.checkersMu.Lock()
+	defer m.checkersMu.Unlock()
+	m.checkers = newCheckers
 }
 
 // waitActivation blocks execution until the activation function returns, if it

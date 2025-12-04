@@ -12,6 +12,13 @@ import (
 // ErrPrefixNotFound is returned when a requested prefix cannot be found.
 var ErrPrefixNotFound = fmt.Errorf("prefix not found")
 
+// PrefixKey is a key for event registry for passing prefix events with it's
+// associated group.
+type PrefixKey struct {
+	Prefix netip.Prefix
+	Group  string
+}
+
 // The prefix status represents the readiness of the prefix to be announced.
 type PrefixStatus bool
 
@@ -35,76 +42,103 @@ func (status PrefixStatus) Merge(newStatus PrefixStatus) (result PrefixStatus, r
 	return newStatus, false
 }
 
-// PrefixesGroups represents a collection of Prefixes, grouped by an announce
-// group names.
-type PrefixesGroups map[string]*Prefixes
+type ServiceStatus bool
 
-// NewPrefixesGroups creates a new PrefixesGroups instance initialized with the
-// provided group names.
-func NewPrefixesGroups(groups []string) PrefixesGroups {
-	prefixesGroups := make(PrefixesGroups, len(groups))
-	for _, group := range groups {
-		prefixesGroups[group] = NewPrefixes()
-	}
-	return prefixesGroups
-}
+const (
+	// ServiceEnabled indicates that the service is ready and active.
+	ServiceEnabled ServiceStatus = true
 
-// GetGroup retrieves the Prefixes associated with the given group name.
+	// ServiceDisabled indicates that the service is not ready or inactive.
+	ServiceDisabled ServiceStatus = false
+)
+
+// Merge merges the current service status with a new ones and determines if the
+// event should be removed from the registry.
 //
-// This function returns nil if provided group is not found.
-func (m PrefixesGroups) GetGroup(group string) *Prefixes {
-	return m[group]
+// This method implemented in order to ServiceStatus can be used in
+// [event.Registry].
+func (status ServiceStatus) Merge(newStatus ServiceStatus) (result ServiceStatus, remove bool) {
+	if status != newStatus {
+		// It is correct to return any status as a result here, because the
+		// event will be removed anyway. Return [ServiceDisabled], as it's more
+		// secure.
+		return ServiceDisabled, true
+	}
+	return newStatus, false
 }
 
-// Prefixes manages the state of prefixes within a single announce group and
-// stores events related to them.
+// Prefixes manages the state of prefixes and stores events related to them.
 type Prefixes struct {
-	prefixes map[netip.Prefix]*prefixState               // stores the state of each prefix
-	events   *event.Registry[netip.Prefix, PrefixStatus] // stores prefix status updates using the prefix as a key
-	mu       sync.RWMutex                                // protects access to the prefixes map to ensure safe concurrent access
+	prefixes map[netip.Prefix]*prefixState            // stores the state of each prefix
+	events   *event.Registry[PrefixKey, PrefixStatus] // stores prefix status updates using the prefix as a key
+	mu       sync.RWMutex                             // protects access to the prefixes map to ensure safe concurrent access
 }
 
 // NewPrefixes creates a new instance of Prefixes.
 func NewPrefixes() *Prefixes {
 	return &Prefixes{
 		prefixes: make(map[netip.Prefix]*prefixState),
-		events:   event.NewRegistry[netip.Prefix, PrefixStatus](),
+		events:   event.NewRegistry[PrefixKey, PrefixStatus](),
 	}
 }
 
 // ReloadServices updates the services associated with each prefix. It applies
 // the new services and removes any prefixes that are no longer in use.
-func (m *Prefixes) ReloadServices(services []key.Service) {
+func (m *Prefixes) ReloadServices(services map[key.Service]string) {
 	// Lock the mutex for writing since we are modifying the prefixes map.
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// newPrefixes temporarily stores the new set of services mapped by their
-	// prefixes.
-	newPrefixes := make(map[netip.Prefix][]key.Service)
-	for _, service := range services {
+	// Temporarily stores the new set of services mapped by their prefixes.
+	prefixServices := make(map[netip.Prefix][]key.Service)
+	// Construct mapping of prefixes to their new announce group.
+	prefixGroup := make(map[netip.Prefix]string)
+	for service, group := range services {
 		prefix := service.Prefix()
-		newPrefixes[prefix] = append(newPrefixes[prefix], service)
+		prefixServices[prefix] = append(prefixServices[prefix], service)
+		prefixGroup[prefix] = group
 	}
 
 	// Iterate over the existing prefixes to update or remove them.
 	for prefix, state := range m.prefixes {
-		if newServices, exists := newPrefixes[prefix]; exists {
-			// If the prefix is still in use, update its services.
+		switch newServices, exists := prefixServices[prefix]; exists {
+		case true: // if the prefix is still in use, update its services
+			oldGroup, newGroup := state.Group(), prefixGroup[prefix]
+
+			// Construct a key for the prefix for possible prefix events. By
+			// now, it should contain the old announce group for the correct
+			// event handling.
+			prefixKey := PrefixKey{Prefix: prefix, Group: oldGroup}
+
+			if newGroup != oldGroup {
+				// If the group changes, record the removal event for the old
+				// prefix key.
+				m.events.Store(prefixKey, Unready)
+				// Update announce group of the prefix.
+				state.UpdateGroup(newGroup)
+				// Do not forget to update the prefixKey to handle events
+				// correctly in the future.
+				prefixKey.Group = newGroup
+			}
+
 			oldStatus := state.Status()
 			state.ApplyServices(newServices)
-			if newStatus := state.Status(); newStatus != oldStatus {
-				// If the status changes, record the event.
-				m.events.Store(prefix, newStatus)
+			newStatus := state.Status()
+
+			if newStatus != oldStatus || newGroup != oldGroup {
+				// If the status changes, record the event. Also send the
+				// current prefix status if the announce group has changed.
+				m.events.Store(prefixKey, newStatus)
 			}
 
 			// Remove the prefix from newPrefixes as it has been processed.
-			delete(newPrefixes, prefix)
+			delete(prefixServices, prefix)
 
-		} else {
+		case false: // if the prefix no longer in use, remove it
 			if state.Status() == Ready {
 				// If the prefix was announced, record announce removal event.
-				m.events.Store(prefix, Unready)
+				prefixKey := PrefixKey{Prefix: prefix, Group: state.Group()}
+				m.events.Store(prefixKey, Unready)
 			}
 			// Remove the prefix from the prefixes map.
 			delete(m.prefixes, prefix)
@@ -112,17 +146,15 @@ func (m *Prefixes) ReloadServices(services []key.Service) {
 	}
 
 	// Add any new prefixes.
-	for prefix, newServices := range newPrefixes {
-		// Number of services used as a quorum because prefix announce should
-		// not be raised until all dependent services are ready.
-		quorum := len(newServices)
-		m.prefixes[prefix] = newState(quorum)
+	for prefix, services := range prefixServices {
+		group := prefixGroup[prefix]
+		m.prefixes[prefix] = newState(group, services)
 	}
 }
 
 // UpdateService updates the status of a specific service associated with a
 // prefix. It returns an error if the prefix is not found.
-func (m *Prefixes) UpdateService(service key.Service, serviceStatus bool) error {
+func (m *Prefixes) UpdateService(service key.Service, status ServiceStatus) error {
 	// Lock the mutex for reading since we are only reading from the prefixes
 	// map.
 	m.mu.RLock()
@@ -140,31 +172,39 @@ func (m *Prefixes) UpdateService(service key.Service, serviceStatus bool) error 
 
 	// Update the service status and record any status change as an event.
 	oldStatus := state.Status()
-	if newStatus := state.UpdateService(service, serviceStatus); newStatus != oldStatus {
-		m.events.Store(prefix, newStatus)
+	if newStatus := state.UpdateService(service, status); newStatus != oldStatus {
+		prefixKey := PrefixKey{Prefix: prefix, Group: state.Group()}
+		m.events.Store(prefixKey, newStatus)
 	}
 
 	return nil
 }
 
-// Status returns the current status of all prefixes.
-func (m *Prefixes) Status() map[netip.Prefix]PrefixStatus {
+// StatusFor returns the current status of passed prefixes.
+func (m *Prefixes) StatusFor(prefixes []netip.Prefix) map[netip.Prefix]PrefixStatus {
 	// Lock the mutex for reading since we are only reading from the prefixes
 	// map.
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	// Create a map to store the status of each prefix and fill it.
-	status := make(map[netip.Prefix]PrefixStatus, len(m.prefixes))
-	for prefix, state := range m.prefixes {
-		status[prefix] = state.Status()
+	// Create a map to store the status of passed prefixes and fill it.
+	status := make(map[netip.Prefix]PrefixStatus, len(prefixes))
+	for _, prefix := range prefixes {
+		switch state, exists := m.prefixes[prefix]; exists {
+		case true:
+			status[prefix] = state.Status()
+		case false:
+			// If the prefix does not exist, use [Unready] status, as it's more
+			// secure.
+			status[prefix] = Unready
+		}
 	}
 
 	return status
 }
 
 // Events retrieves and clears the events storage.
-func (m *Prefixes) Events() map[netip.Prefix]PrefixStatus {
+func (m *Prefixes) Events() map[PrefixKey]PrefixStatus {
 	return m.events.Flush()
 }
 
@@ -172,16 +212,26 @@ func (m *Prefixes) Events() map[netip.Prefix]PrefixStatus {
 // the active services and determines if the prefix is ready based on the
 // quorum.
 type prefixState struct {
-	activeServices map[key.Service]struct{} // keeps set of the currently active services for this prefix
-	quorum         int                      // the number of services required for the prefix to be considered ready
-	mu             sync.RWMutex             // protects access to the prefixState to ensure safe concurrent access
+	group    string                        // announce group of the prefix
+	services map[key.Service]ServiceStatus // keeps set of the services for this prefix
+	active   int                           // the number of active services for this prefix
+	quorum   int                           // the number of services required for the prefix to be considered ready
+	mu       sync.RWMutex                  // protects access to the prefixState to ensure safe concurrent access
 }
 
 // newState creates a new prefixState with the specified quorum.
-func newState(quorum int) *prefixState {
+func newState(group string, services []key.Service) *prefixState {
+	servicesSet := make(map[key.Service]ServiceStatus)
+	for _, service := range services {
+		servicesSet[service] = ServiceDisabled
+	}
 	return &prefixState{
-		activeServices: make(map[key.Service]struct{}),
-		quorum:         quorum,
+		group:    group,
+		services: servicesSet,
+		active:   0,
+		// Number of services used as a quorum because prefix announce should
+		// not be raised until all dependent services are ready.
+		quorum: len(servicesSet),
 	}
 }
 
@@ -193,37 +243,53 @@ func (m *prefixState) ApplyServices(newServices []key.Service) {
 	defer m.mu.Unlock()
 
 	// Create a new set of services based on the provided list.
-	newServicesSet := make(map[key.Service]struct{}, len(newServices))
+	newServicesSet := make(map[key.Service]ServiceStatus, len(newServices))
+	// Count the number of active services in the new set of services.
+	active := 0
 	for _, service := range newServices {
-		newServicesSet[service] = struct{}{}
-	}
+		// All new services are disabled by default.
+		status := ServiceDisabled
 
-	// Remove any services that are no longer active.
-	for activeService := range m.activeServices {
-		if _, exists := newServicesSet[activeService]; !exists {
-			delete(m.activeServices, activeService)
+		// If the service was presented earlier and has [ServiceEnabled] status,
+		// update its status.
+		if knownStatus, exists := m.services[service]; exists && knownStatus == ServiceEnabled {
+			status = ServiceEnabled
+			active++
 		}
+		newServicesSet[service] = status
 	}
 
+	// Update the active services map with the new set of services.
+	m.services = newServicesSet
+	// Update the active count based on the new set of services.
+	m.active = active
 	// Update the quorum based on the number of new services.
 	m.quorum = len(newServices)
 }
 
 // UpdateService updates the status of a specific service within the prefix. It
 // returns the new status of the prefix.
-func (m *prefixState) UpdateService(service key.Service, enable bool) (newStatus PrefixStatus) {
+func (m *prefixState) UpdateService(service key.Service, status ServiceStatus) (newStatus PrefixStatus) {
 	// Lock the mutex for writing since we are modifying the activeServices map.
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// Add or remove the service from the activeServices set based on the enable
-	// flag.
-	switch enable {
-	case true:
-		m.activeServices[service] = struct{}{}
-	case false:
-		delete(m.activeServices, service)
+	if currStatus, exists := m.services[service]; !exists || currStatus == status {
+		// Return the current status of the prefix if the service does not exist
+		// or current status is the same as the new status.
+		return m.status()
 	}
+
+	// Update the active count based on the new status of the service.
+	switch status {
+	case ServiceEnabled:
+		m.active++
+	case ServiceDisabled:
+		m.active--
+	}
+
+	// Update the status of the service.
+	m.services[service] = status
 
 	// Return the updated status of the prefix.
 	return m.status()
@@ -240,13 +306,29 @@ func (m *prefixState) Status() PrefixStatus {
 	return m.status()
 }
 
+// Group returns the announce group of the prefix.
+func (m *prefixState) Group() string {
+	// Lock the mutex for reading since we are only reading group value.
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.group
+}
+
+// UpdateGroup updates the announce group of the prefix.
+func (m *prefixState) UpdateGroup(group string) {
+	// Lock the mutex for writing since we are modifying the group value.
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.group = group
+}
+
 // status is a helper method to determine if the prefix is ready based on the
 // number of active services and the quorum. It assumes the prefixState mutex is
 // already held.
 func (m *prefixState) status() PrefixStatus {
 	// A prefix is considered ready if the number of active services meets the
 	// quorum.
-	if m.quorum == len(m.activeServices) && m.quorum != 0 {
+	if m.quorum == m.active && m.active != 0 {
 		return Ready
 	}
 	return Unready

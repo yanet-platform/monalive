@@ -3,14 +3,17 @@ package core
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"time"
 
+	log "go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	monalivepb "github.com/yanet-platform/monalive/gen/manager"
+	"github.com/yanet-platform/monalive/internal/core/service"
+	"github.com/yanet-platform/monalive/internal/monitoring/metrics"
+	"github.com/yanet-platform/monalive/internal/types/requestid"
 )
 
 // ServicesConfig defines the configuration for loading and dumping service
@@ -40,12 +43,13 @@ type Manager struct {
 	core     *Core        // core instance that managing all health checking logic
 	loader   ConfigLoader // this function is used to load the services configuration
 	updateTS time.Time    // last configuration update timestamp
-	logger   *slog.Logger
+	metrics  metrics.Provider
+	logger   *log.Logger
 }
 
 // NewManager creates a new Manager instance. It selects the appropriate
 // configuration loader based on the format specified in the config.
-func NewManager(config *ManagerConfig, core *Core, logger *slog.Logger) (*Manager, error) {
+func NewManager(config *ManagerConfig, core *Core, metrics metrics.Provider, logger *log.Logger) (*Manager, error) {
 	var loader ConfigLoader
 	switch format := config.Services.Format; format {
 	case KeepalivedFormat:
@@ -57,10 +61,11 @@ func NewManager(config *ManagerConfig, core *Core, logger *slog.Logger) (*Manage
 	}
 
 	return &Manager{
-		config: config,
-		core:   core,
-		loader: loader,
-		logger: logger,
+		config:  config,
+		core:    core,
+		loader:  loader,
+		metrics: metrics,
+		logger:  logger,
 	}, nil
 }
 
@@ -71,25 +76,32 @@ func NewManager(config *ManagerConfig, core *Core, logger *slog.Logger) (*Manage
 //
 // Implements the Reload method defined in monalivepb.
 func (m *Manager) Reload(ctx context.Context, _ *monalivepb.ReloadRequest) (*monalivepb.ReloadResponse, error) {
-	m.logger.Info("starting reload services configuration")
-	defer m.logger.Info("reload services configuration finished")
+	reqID, _ := requestid.FromContext(ctx)
+	logger := m.logger.With(log.String("request_id", string(reqID)))
+
+	logger.Info("starting reload services configuration")
+	defer logger.Info("reload services configuration finished")
 
 	config, err := m.loadConfig()
 	if err != nil {
+		logger.Error("failed to load services configuration", log.Error(err))
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
 	if err := config.Prepare(); err != nil {
+		logger.Error("failed to prepare services configuration", log.Error(err))
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
 	if err := m.core.Reload(config); err != nil {
+		logger.Error("failed to process reload", log.Error(err))
 		return nil, status.Error(codes.Internal, fmt.Sprintf("failed to process reload: %v", err))
 	}
 
 	m.updateTS = time.Now()
 
 	if err := config.Dump(m.config.Services.DumpPath); err != nil {
+		logger.Error("failed to dump services configuration", log.Error(err))
 		return nil, status.Error(codes.Internal, fmt.Sprintf("failed to dump services config: %v", err))
 	}
 
@@ -112,9 +124,11 @@ func (m *Manager) GetStatus(ctx context.Context, _ *monalivepb.GetStatusRequest)
 // loadConfig loads the configuration from the specified path using the selected loader function.
 // It returns the loaded Config instance or an error if loading fails.
 func (m *Manager) loadConfig() (*Config, error) {
-	var coreConfig Config
-	if err := m.loader(m.config.Services.Path, &coreConfig); err != nil {
+	coreConfig := &Config{
+		Services: []*service.Config{},
+	}
+	if err := m.loader(m.config.Services.Path, coreConfig); err != nil {
 		return nil, fmt.Errorf("failed to load services config [format: %s]: %w", m.config.Services.Format, err)
 	}
-	return &coreConfig, nil
+	return coreConfig, nil
 }

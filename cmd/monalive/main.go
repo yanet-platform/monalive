@@ -4,17 +4,18 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"os"
 	"os/signal"
 	"path"
 	"syscall"
 
 	"github.com/spf13/cobra"
+	log "go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/yanet-platform/monalive/internal/app"
-	"github.com/yanet-platform/monalive/internal/monitoring/xlog"
+	"github.com/yanet-platform/monalive/internal/monitoring/logger"
+	"github.com/yanet-platform/monalive/internal/utils/exp"
 )
 
 func main() {
@@ -59,18 +60,20 @@ func exec(configPath string) error {
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
+	exp.ExperimentalFeatures(config.Experiments)
 
-	logger, err := xlog.New(config.Logger)
+	logger, err := logger.New(ctx, config.Logger)
 	if err != nil {
 		return fmt.Errorf("failed to create logger: %w", err)
 	}
+	defer logger.Sync()
 
 	// Log the start of the application with the current configuration.
 	//
 	// TODO: print app version here.
 	logger.Info(
 		"starting monalive",
-		slog.Any("config", config),
+		log.Any("config", config),
 	)
 
 	// Create an error group with a derived context for managing goroutines.
