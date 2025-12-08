@@ -12,6 +12,7 @@ import (
 	"github.com/yanet-platform/monalive/internal/announcer/bird"
 	"github.com/yanet-platform/monalive/internal/balancer"
 	"github.com/yanet-platform/monalive/internal/balancer/yanet"
+	"github.com/yanet-platform/monalive/internal/balancer/yanet2"
 	"github.com/yanet-platform/monalive/internal/core"
 	"github.com/yanet-platform/monalive/internal/monitoring/metrics"
 	"github.com/yanet-platform/monalive/internal/monitoring/metrics/prometheus"
@@ -64,14 +65,24 @@ func New(config Config, logger *log.Logger) (*Monalive, error) {
 	// Create an announcer instance.
 	announcer := announcer.New(config.Announcer, bird, logger)
 
-	// Initialize the YANET client to communicate with YANET control plane.
-	yanetClient, err := yanet.NewClient(config.YANET)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create yanet client: %w", err)
+	var balancerClient balancer.LoadBalancerClient
+	switch {
+	case config.YANET != nil:
+		client, err := yanet.NewClient(config.YANET)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create yanet client: %w", err)
+		}
+		balancerClient = client
+	case config.YANET2 != nil:
+		client, err := yanet2.NewClient(config.YANET2)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create yanet2 client: %w", err)
+		}
+		balancerClient = client
+	default:
+		return nil, fmt.Errorf("balancer client was not specified")
 	}
-
-	// Create a balancer worker instance.
-	balancer := balancer.New(config.Balancer, yanetClient, announcer, logger)
+	balancer := balancer.New(config.Balancer, balancerClient, announcer, logger)
 
 	// Initialize the check tunneler.
 	tunneler, err := checktun.New(config.Tunnel, logger)
