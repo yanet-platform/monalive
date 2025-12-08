@@ -10,6 +10,7 @@ import (
 	"github.com/yanet-platform/monalive/internal/announcer/bird"
 	"github.com/yanet-platform/monalive/internal/balancer"
 	"github.com/yanet-platform/monalive/internal/balancer/yanet"
+	"github.com/yanet-platform/monalive/internal/balancer/yanet2"
 	"github.com/yanet-platform/monalive/internal/core"
 	"github.com/yanet-platform/monalive/internal/monitoring/logger"
 	"github.com/yanet-platform/monalive/internal/monitoring/metrics"
@@ -24,6 +25,7 @@ type Config struct {
 
 	Balancer *balancer.Config `yaml:"balancer"`
 	YANET    *yanet.Config    `yaml:"yanet"`
+	YANET2   *yanet2.Config   `yaml:"yanet2"`
 
 	Announcer *announcer.Config `yaml:"announcer"`
 	Bird      *bird.Config      `yaml:"bird"`
