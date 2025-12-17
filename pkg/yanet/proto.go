@@ -15,7 +15,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
 
-	yanetpb "github.com/yanet-platform/monalive/gen/yanet"
+	yanetpb "github.com/yanet-platform/monalive/gen/yanet/libprotobuf"
 )
 
 const defaultYANETControlPlaneSockPath = "/run/yanet/protocontrolplane.sock"
@@ -87,7 +87,7 @@ func WithControlPlaneSockPath(path string) ClientOption {
 	}
 }
 
-// rpcChannel implements grpc.ClientConnInterface and manages the RPC
+// rpcChannel implements [grpc.ClientConnInterface] and manages the RPC
 // connections for each method.
 //
 // In fact rpcChannel stores set of connections to YANET control plane. Each

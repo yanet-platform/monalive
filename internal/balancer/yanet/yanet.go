@@ -11,7 +11,7 @@ import (
 	"github.com/yanet-platform/monalive/internal/types/weight"
 	"github.com/yanet-platform/monalive/pkg/yanet"
 
-	yanetpb "github.com/yanet-platform/monalive/gen/yanet"
+	yanetpb "github.com/yanet-platform/monalive/gen/yanet/libprotobuf"
 )
 
 // Client wraps a YANET client for interacting with the balancer service.
