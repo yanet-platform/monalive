@@ -12,8 +12,10 @@ import (
 // Scheduler defines the structure to hold the configuration and initial delay
 // for running jobs.
 type Scheduler struct {
-	config    Config        // holds the scheduling configuration
-	initDelay time.Duration // initial random delay before starting the scheduler
+	retries    int           // number of retry attempts
+	retryDelay time.Duration // delay before retrying
+	loopDelay  time.Duration // delay between task executions
+	initDelay  time.Duration // initial random delay before starting the scheduler
 }
 
 // Option represents a function that configures a Scheduler instance.
@@ -24,14 +26,16 @@ type Option func(*Scheduler)
 // and the configured loop delay.
 func WithInitialDelay() Option {
 	return func(s *Scheduler) {
-		s.initDelay = time.Duration(rand.Float64() * float64(s.config.GetDelayLoop()))
+		s.initDelay = time.Duration(rand.Float64() * float64(s.loopDelay))
 	}
 }
 
 // New creates a new Scheduler instance.
-func New(config Config, opts ...Option) *Scheduler {
+func New(retries int, retryDelay, loopDelay time.Duration, opts ...Option) *Scheduler {
 	s := &Scheduler{
-		config: config,
+		retries:    retries,
+		retryDelay: retryDelay,
+		loopDelay:  loopDelay,
 	}
 
 	// Apply all provided options to the Scheduler.
@@ -76,9 +80,9 @@ func (m *Scheduler) Run(ctx context.Context, job func() error) error {
 	case <-timer.C:
 	}
 
-	retries := m.config.GetRetries()
-	retryDelay := m.config.GetRetryDelay()
-	loopDelay := m.config.GetDelayLoop()
+	retries := m.retries
+	retryDelay := m.retryDelay
+	loopDelay := m.loopDelay
 
 	for {
 		// Attempt to run the job and retry upon failure.

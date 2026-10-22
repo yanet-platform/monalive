@@ -9,10 +9,10 @@ import (
 	log "go.uber.org/zap"
 
 	"github.com/yanet-platform/monalive/internal/core/checker/check"
-	"github.com/yanet-platform/monalive/internal/scheduler"
-	"github.com/yanet-platform/monalive/internal/types/weight"
 	"github.com/yanet-platform/monalive/internal/types/xevent"
 	"github.com/yanet-platform/monalive/internal/utils/xnet"
+	"github.com/yanet-platform/monalive/pkg/keepalived"
+	"github.com/yanet-platform/monalive/pkg/weight"
 )
 
 // testHandler is a mock handler used for testing. It stores the last event
@@ -40,15 +40,15 @@ func (m *testHandler) Event() *xevent.Event {
 // default weight coefficient. It also sets up a default scheduler configuration
 // with retries set to 0.
 func defaultChecker(handler xevent.Handler, weight weight.Weight) *Checker {
-	schedConfig := scheduler.Config{}
+	schedConfig := keepalived.Scheduler{}
 	schedConfig.Default()
 	*schedConfig.Retries = 0
 
 	config := &Config{
-		Type:      HTTPChecker,
+		Type:      keepalived.HTTPChecker,
 		Scheduler: schedConfig,
-		CheckConfig: check.Config{
-			WeightControl: check.WeightControl{
+		Check: keepalived.Check{
+			WeightControl: keepalived.WeightControl{
 				DynamicWeight:      true,
 				DynamicWeightCoeff: 30, // 30%
 			},

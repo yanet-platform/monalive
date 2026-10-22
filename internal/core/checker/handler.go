@@ -7,9 +7,9 @@ import (
 	log "go.uber.org/zap"
 
 	"github.com/yanet-platform/monalive/internal/core/checker/check"
-	"github.com/yanet-platform/monalive/internal/types/weight"
 	"github.com/yanet-platform/monalive/internal/types/xevent"
 	"github.com/yanet-platform/monalive/internal/utils/throttler"
+	"github.com/yanet-platform/monalive/pkg/weight"
 )
 
 // ProcessCheck processes the results of a health check, updating the internal
@@ -48,7 +48,7 @@ func (m *Checker) processSucceed(md check.Metadata) {
 	statusChanged := m.enableChecker()
 
 	// Recalculate the weight based on the current and new weight values.
-	newWeight := md.Weight.Recalculate(m.state.Weight, m.config.DynamicWeightCoeff)
+	newWeight := m.recalculateWeight(md.Weight)
 	weightChanged := m.updateWeight(newWeight)
 
 	if !statusChanged && !weightChanged && !md.Force {
@@ -185,4 +185,48 @@ func (m *Checker) updateWeight(weight weight.Weight) (changed bool) {
 	}
 	m.state.Weight = weight
 	return true
+}
+
+// Recalculate modifies the weight based on the provided coefficient and returns
+// the new weight.
+//
+// If the weight is greater than the old value, it increases the weight by
+// a calculated step, otherwise, it decreases the weight by that step.
+// The step is calculated as `old * coeff / 100`, with a minimum step of 1.
+//
+// The function handles corner cases as follows:
+//   - If `weight` is less than 0, it returns `old`.
+//   - If `old` is less than 0, it returns `weight`.
+//   - If `coeff` is 0, it returns `weight` without modification.
+func (m *Checker) recalculateWeight(newWeight weight.Weight) weight.Weight {
+	old := m.state.Weight
+	coeff := m.config.DynamicWeightCoeff
+
+	if newWeight < 0 && old < 0 {
+		return weight.Omitted
+	}
+	if newWeight < 0 {
+		return old
+	}
+	if old < 0 {
+		return newWeight
+	}
+
+	if coeff == 0 {
+		return newWeight
+	}
+
+	oldValue := int(old)
+	step := oldValue * int(coeff) / 100
+	if step == 0 {
+		step = 1
+	}
+
+	if newWeight > old {
+		calcWeight := weight.Weight(oldValue + step)
+		return min(newWeight, calcWeight)
+	}
+
+	calcWeight := weight.Weight(oldValue - step)
+	return max(newWeight, calcWeight)
 }

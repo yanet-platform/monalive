@@ -3,7 +3,6 @@ package core
 import (
 	"encoding/json"
 	"fmt"
-	"net/netip"
 	"os"
 	"path/filepath"
 
@@ -23,16 +22,30 @@ const (
 )
 
 // ConfigLoader is a function type for loading configuration.
-type ConfigLoader func(path string, config *Config) error
+type ConfigLoader func(path string) (*Config, error)
 
 // KeepalivedConfigLoader loads a configuration from a keepalived format file.
-func KeepalivedConfigLoader(path string, config *Config) error {
-	return keepalived.LoadConfig(path, config)
+func KeepalivedConfigLoader(path string) (*Config, error) {
+	keepalivedConfig, err := keepalived.LoadConfig(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load keepalived config: %w", err)
+	}
+
+	// Convert the keepalived services configuration to the internal
+	// representation.
+	services := make([]*service.Config, len(keepalivedConfig.Services))
+	for i, s := range keepalivedConfig.Services {
+		services[i] = (*service.Config)(s)
+	}
+
+	return &Config{
+		Services: services,
+	}, nil
 }
 
 // JSONConfigLoader is intended to load a configuration from a JSON file.
 // Currently, it is not implemented and will panic if called.
-func JSONConfigLoader(path string, config *Config) error {
+func JSONConfigLoader(path string) (*Config, error) {
 	// Just read and unmarshal file is not enough.
 	// File includes must be supported.
 	panic("unimplemented")
@@ -41,21 +54,7 @@ func JSONConfigLoader(path string, config *Config) error {
 // Config represents the configuration for virtual servers.
 type Config struct {
 	// List of virtual servers configurations.
-	Services []*service.Config `keepalive:"virtual_server"`
-}
-
-// Prepare processes the configuration by performing validation, propagating
-// fields, unmapping IP addresses, etc.
-func (m *Config) Prepare() error {
-	// Prepare each service configuration.
-	for _, service := range m.Services {
-		if err := service.Prepare(); err != nil {
-			return err
-		}
-	}
-	// Validate announce groups.
-	m.validateAnnounceGroups()
-	return nil
+	Services []*service.Config
 }
 
 // Dump serializes the configuration to a JSON file at the specified path. It
@@ -94,22 +93,4 @@ func (m *Config) Dump(path string) error {
 	}
 
 	return nil
-}
-
-// validateAnnounceGroups ensures that each service in the configuration uses
-// the correct announce group for its prefix. It maps prefixes to their
-// respective announce groups and ensures consistency across the services.
-func (m *Config) validateAnnounceGroups() {
-	prefixes := make(map[netip.Prefix]string)
-	for _, service := range m.Services {
-		if service.AnnounceGroup == "" {
-			continue
-		}
-
-		prefix := service.Key().Prefix()
-		if _, exists := prefixes[prefix]; !exists {
-			prefixes[prefix] = service.AnnounceGroup
-		}
-		service.AnnounceGroup = prefixes[prefix]
-	}
 }

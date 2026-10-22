@@ -11,7 +11,6 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	monalivepb "github.com/yanet-platform/monalive/gen/manager"
-	"github.com/yanet-platform/monalive/internal/core/service"
 	"github.com/yanet-platform/monalive/internal/monitoring/metrics"
 	"github.com/yanet-platform/monalive/internal/types/requestid"
 )
@@ -88,11 +87,6 @@ func (m *Manager) Reload(ctx context.Context, _ *monalivepb.ReloadRequest) (*mon
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	if err := config.Prepare(); err != nil {
-		logger.Error("failed to prepare services configuration", log.Error(err))
-		return nil, status.Error(codes.Internal, err.Error())
-	}
-
 	if err := m.core.Reload(config); err != nil {
 		logger.Error("failed to process reload", log.Error(err))
 		return nil, status.Error(codes.Internal, fmt.Sprintf("failed to process reload: %v", err))
@@ -124,10 +118,8 @@ func (m *Manager) GetStatus(ctx context.Context, _ *monalivepb.GetStatusRequest)
 // loadConfig loads the configuration from the specified path using the selected loader function.
 // It returns the loaded Config instance or an error if loading fails.
 func (m *Manager) loadConfig() (*Config, error) {
-	coreConfig := &Config{
-		Services: []*service.Config{},
-	}
-	if err := m.loader(m.config.Services.Path, coreConfig); err != nil {
+	coreConfig, err := m.loader(m.config.Services.Path)
+	if err != nil {
 		return nil, fmt.Errorf("failed to load services config [format: %s]: %w", m.config.Services.Format, err)
 	}
 	return coreConfig, nil

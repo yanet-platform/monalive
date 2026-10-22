@@ -1,4 +1,4 @@
-package real
+package keepalived
 
 import (
 	"net/netip"
@@ -6,24 +6,22 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/yanet-platform/monalive/internal/core/checker"
 )
 
 // createRealWithCheckers creates a real config with default checker.
-func createRealWithChecker() *Config {
-	cfg := DefaultConfig()
-	checkerConfig := checker.DefaultConfig()
-	checkerConfig.Type = checker.TCPChecker
+func createRealWithChecker() *Real {
+	cfg := DefaultReal()
+	checkerConfig := DefaultCheckerConfig()
+	checkerConfig.Type = TCPChecker
 	cfg.TCPCheckers = append(cfg.TCPCheckers, checkerConfig)
 	return cfg
 }
 
 // TestPrepare_IPUnmap checks that IPv4-mapped IPv6 addresses are converted to
 // IPv4.
-func TestPrepare_IPUnmap(t *testing.T) {
+func TestRealPrepare_IPUnmap(t *testing.T) {
 	// Create a configuration with IPv4-mapped IPv6 address.
-	cfg := DefaultConfig()
+	cfg := DefaultReal()
 	cfg.IP = netip.MustParseAddr("::ffff:192.168.1.1") // IPv4-mapped IPv6 address
 	err := cfg.Prepare()
 	require.NoError(t, err)
@@ -32,24 +30,24 @@ func TestPrepare_IPUnmap(t *testing.T) {
 }
 
 // TestPrepare_CheckerTypes checks that checker types are set correctly.
-func TestPrepare_CheckerTypes(t *testing.T) {
+func TestRealPrepare_CheckerTypes(t *testing.T) {
 	// Create a configuration with checkers.
 	cfg := createRealWithChecker()
-	cfg.HTTPCheckers = append(cfg.HTTPCheckers, checker.DefaultConfig())
-	cfg.HTTPSCheckers = append(cfg.HTTPSCheckers, checker.DefaultConfig())
-	cfg.GRPCCheckers = append(cfg.GRPCCheckers, checker.DefaultConfig())
+	cfg.HTTPCheckers = append(cfg.HTTPCheckers, DefaultCheckerConfig())
+	cfg.HTTPSCheckers = append(cfg.HTTPSCheckers, DefaultCheckerConfig())
+	cfg.GRPCCheckers = append(cfg.GRPCCheckers, DefaultCheckerConfig())
 	err := cfg.Prepare()
 	require.NoError(t, err)
 	// Check that checker types were set correctly.
-	assert.Equal(t, checker.TCPChecker, cfg.TCPCheckers[0].Type)
-	assert.Equal(t, checker.HTTPChecker, cfg.HTTPCheckers[0].Type)
-	assert.Equal(t, checker.HTTPSChecker, cfg.HTTPSCheckers[0].Type)
-	assert.Equal(t, checker.GRPCChecker, cfg.GRPCCheckers[0].Type)
+	assert.Equal(t, TCPChecker, cfg.TCPCheckers[0].Type)
+	assert.Equal(t, HTTPChecker, cfg.HTTPCheckers[0].Type)
+	assert.Equal(t, HTTPSChecker, cfg.HTTPSCheckers[0].Type)
+	assert.Equal(t, GRPCChecker, cfg.GRPCCheckers[0].Type)
 }
 
 // TestPrepare_PropagateSchedulerSettings checks that scheduler settings are
 // propagated to checkers.
-func TestPrepare_PropagateSchedulerSettings(t *testing.T) {
+func TestRealPrepare_PropagateSchedulerSettings(t *testing.T) {
 	// Create a configuration with scheduler settings
 	cfg := createRealWithChecker()
 	delayLoop := 30.0
@@ -72,7 +70,7 @@ func TestPrepare_PropagateSchedulerSettings(t *testing.T) {
 
 // TestPrepare_PropagateVirtualhost checks that Virtualhost is propagated to
 // checkers
-func TestPrepare_PropagateVirtualhost(t *testing.T) {
+func TestRealPrepare_PropagateVirtualhost(t *testing.T) {
 	// Create a configuration with Virtualhost
 	cfg := createRealWithChecker()
 	virtualhost := "example.com"
@@ -86,7 +84,7 @@ func TestPrepare_PropagateVirtualhost(t *testing.T) {
 }
 
 // TestPrepare_PropagateWithExistingValues checks that existing values in checkers are not overwritten
-func TestPrepare_PropagateWithExistingValues(t *testing.T) {
+func TestRealPrepare_PropagateWithExistingValues(t *testing.T) {
 	// Create a configuration with settings
 	cfg := createRealWithChecker()
 	realDelayLoop := 30.0

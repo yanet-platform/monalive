@@ -11,11 +11,11 @@ import (
 
 	"github.com/yanet-platform/monalive/internal/core/checker"
 	"github.com/yanet-platform/monalive/internal/types/key"
-	"github.com/yanet-platform/monalive/internal/types/weight"
 	"github.com/yanet-platform/monalive/internal/types/xevent"
 	"github.com/yanet-platform/monalive/internal/utils/shutdown"
 	"github.com/yanet-platform/monalive/internal/utils/workerpool"
 	"github.com/yanet-platform/monalive/internal/utils/xnet"
+	"github.com/yanet-platform/monalive/pkg/weight"
 )
 
 // ActivationFunc defines a function type used to control the activation of a
@@ -238,12 +238,19 @@ func (m *Real) reload(config *Config) {
 
 	// Concatenate all types of checkers from the new config into a single
 	// slice.
-	checkers := slices.Concat(
+	keepalevidCheckers := slices.Concat(
 		config.TCPCheckers,
 		config.HTTPCheckers,
 		config.HTTPSCheckers,
 		config.GRPCCheckers,
 	)
+
+	// Convert the keepalived checker configuration to the internal
+	// representation.
+	checkers := make([]*checker.Config, len(keepalevidCheckers))
+	for i, cfg := range keepalevidCheckers {
+		checkers[i] = (*checker.Config)(cfg)
+	}
 
 	// Map to store the new set of checkers after reloading.
 	newCheckers := make(map[checker.Key]*checker.Checker)

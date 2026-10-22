@@ -4,50 +4,16 @@ import (
 	"net/netip"
 	"time"
 
-	"github.com/yanet-platform/monalive/internal/core/checker/check"
-	"github.com/yanet-platform/monalive/internal/scheduler"
-	"github.com/yanet-platform/monalive/internal/types/port"
+	"github.com/yanet-platform/monalive/pkg/keepalived"
+	port "github.com/yanet-platform/monalive/pkg/optport"
 )
 
-// Type represents the type of the checker (TCP, HTTP, etc.).
-type Type int
-
-const (
-	TCPChecker Type = iota + 1
-	HTTPChecker
-	HTTPSChecker
-	GRPCChecker
-)
-
-func (m Type) String() string {
-	switch m {
-	case TCPChecker:
-		return "TCP"
-	case HTTPChecker:
-		return "HTTP"
-	case HTTPSChecker:
-		return "HTTPS"
-	case GRPCChecker:
-		return "GRPC"
-	default:
-		return "unknown"
-	}
-}
-
-type (
-	// Scheduler is a type alias for [scheduler.Config] to provide more
-	// informative naming for the embedded field in the Config structure.
-	Scheduler = scheduler.Config
-
-	// CheckConfig is a type alias for [check.Config] to provide more
-	// informative naming for the embedded field in the Config structure.
-	CheckConfig = check.Config
-)
+type Config keepalived.Checker
 
 // Key represents the full configuration of a checker, with pointers replaced by
 // values. This structure is used to uniquely identify a checker configuration.
 type Key struct {
-	ty Type
+	ty keepalived.CheckerType
 
 	connectIP      netip.Addr
 	connectPort    port.Port
@@ -68,28 +34,6 @@ type Key struct {
 	delayLoop  time.Duration
 	retries    int
 	retryDelay time.Duration
-}
-
-// Config holds the configuration for a checker, including its type and various
-// settings.
-type Config struct {
-	Type        Type
-	CheckConfig `keepalive_nested:"check"`
-	Scheduler   `keepalive_nested:"scheduler"`
-}
-
-// Default initializes the Config with default values.
-// This method is a placeholder for any default initialization logic.
-func (m *Config) Default() {
-	// Just to override embedded one.
-}
-
-// Prepare processes the configuration by unmapping IP addresses.
-func (m *Config) Prepare() error {
-	m.BindIP = m.BindIP.Unmap()
-	m.ConnectIP = m.ConnectIP.Unmap()
-
-	return nil
 }
 
 // Key returns a Key representation of the Config, which includes all necessary
@@ -125,16 +69,5 @@ func (m *Config) Key() Key {
 		delayLoop:  m.GetDelayLoop(),
 		retries:    m.GetRetries(),
 		retryDelay: m.GetRetryDelay(),
-	}
-}
-
-// DefaultConfig return default checker configuration.
-// Used for testing purpuses only.
-func DefaultConfig() *Config {
-	var schedConfig Scheduler
-	schedConfig.Default()
-	return &Config{
-		CheckConfig: check.DefaultConfig(),
-		Scheduler:   schedConfig,
 	}
 }

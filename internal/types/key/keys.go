@@ -4,7 +4,7 @@ import (
 	"net/netip"
 
 	"github.com/yanet-platform/monalive/internal/monitoring/metrics"
-	"github.com/yanet-platform/monalive/internal/types/port"
+	port "github.com/yanet-platform/monalive/pkg/optport"
 )
 
 type Service struct {

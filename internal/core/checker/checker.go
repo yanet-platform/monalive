@@ -13,10 +13,11 @@ import (
 
 	"github.com/yanet-platform/monalive/internal/core/checker/check"
 	"github.com/yanet-platform/monalive/internal/scheduler"
-	"github.com/yanet-platform/monalive/internal/types/weight"
 	"github.com/yanet-platform/monalive/internal/types/xevent"
 	"github.com/yanet-platform/monalive/internal/utils/shutdown"
 	"github.com/yanet-platform/monalive/internal/utils/xnet"
+	"github.com/yanet-platform/monalive/pkg/keepalived"
+	"github.com/yanet-platform/monalive/pkg/weight"
 )
 
 // Check interface defines the behavior required for a health check
@@ -71,29 +72,30 @@ func New(config *Config, handler xevent.Handler, weight weight.Weight, forwardin
 
 	// These values are used in the logger.
 	var uri, meta string
+	checkCfg := (check.Config)(config.Check)
 
 	// Determine the type of check to use based on the configuration.
 	switch config.Type {
-	case TCPChecker:
-		check := check.NewTCPCheck(config.CheckConfig, forwardingData)
+	case keepalived.TCPChecker:
+		check := check.NewTCPCheck(checkCfg, forwardingData)
 		checker.check = check
 
 		uri, meta = check.URI(), "tcp_check"
 
-	case HTTPChecker:
-		check := check.NewHTTPCheck(config.CheckConfig, forwardingData)
+	case keepalived.HTTPChecker:
+		check := check.NewHTTPCheck(checkCfg, forwardingData)
 		checker.check = check
 
 		uri, meta = check.URI(), "http_check"
 
-	case HTTPSChecker:
-		check := check.NewHTTPCheck(config.CheckConfig, forwardingData, check.HTTPWithTLS())
+	case keepalived.HTTPSChecker:
+		check := check.NewHTTPCheck(checkCfg, forwardingData, check.HTTPWithTLS())
 		checker.check = check
 
 		uri, meta = check.URI(), "https_check"
 
-	case GRPCChecker:
-		check := check.NewGRPCCheck(config.CheckConfig, forwardingData)
+	case keepalived.GRPCChecker:
+		check := check.NewGRPCCheck(checkCfg, forwardingData)
 		checker.check = check
 
 		uri, meta = check.URI(), "grpc_check"
@@ -115,7 +117,12 @@ func New(config *Config, handler xevent.Handler, weight weight.Weight, forwardin
 // It then continues running the checks at intervals defined by the
 // configuration until stopped.
 func (m *Checker) Run(ctx context.Context) {
-	scheduler := scheduler.New(m.config.Scheduler, scheduler.WithInitialDelay())
+	scheduler := scheduler.New(
+		m.config.Scheduler.GetRetries(),
+		m.config.Scheduler.GetRetryDelay(),
+		m.config.Scheduler.GetDelayLoop(),
+		scheduler.WithInitialDelay(),
+	)
 	m.log.Info(
 		"running checker",
 		log.Duration("delay", scheduler.InitialDelay()),

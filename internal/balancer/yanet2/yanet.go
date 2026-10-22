@@ -12,7 +12,7 @@ import (
 	"github.com/yanet-platform/monalive/gen/yanet2/common/commonpb"
 	"github.com/yanet-platform/monalive/gen/yanet2/modules/balancer/controlplane/balancerpb"
 	"github.com/yanet-platform/monalive/internal/types/key"
-	"github.com/yanet-platform/monalive/internal/types/weight"
+	"github.com/yanet-platform/monalive/pkg/weight"
 )
 
 // Client wraps a YANET client for interacting with the balancer service.

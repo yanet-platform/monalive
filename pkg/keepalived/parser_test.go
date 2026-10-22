@@ -10,11 +10,11 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-type Config struct {
-	Services []*Service `keepalive:"virtual_server"`
+type testConfig struct {
+	Services []*testService `keepalive:"virtual_server"`
 }
 
-type Service struct {
+type testService struct {
 	VIP                    netip.Addr     `keepalive_pos:"0"`
 	VPort                  *uint16        `keepalive_pos:"1"`
 	Protocol               string         `keepalive:"protocol"`
@@ -30,16 +30,16 @@ type Service struct {
 	OnePacketScheduler     bool           `keepalive:"ops"`
 	IPv4OuterSourceNetwork string         `keepalive:"ipv4_outer_source_network"`
 	IPv6OuterSourceNetwork string         `keepalive:"ipv6_outer_source_network"`
-	Reals                  []*Real        `keepalive:"real_server"`
+	Reals                  []*testReal    `keepalive:"real_server"`
 }
 
-type Real struct {
-	IP               netip.Addr     `keepalive_pos:"0"`
-	Port             *uint16        `keepalive_pos:"1"`
-	Weight           int            `keepalive:"weight" default:"1"`
-	InhibitOnFailure bool           `keepalive:"inhibit_on_failure"`
-	CheckScheduler   CheckScheduler `keepalive_nested:"scheduler"`
-	HTTPCheckers     []*HTTPChecker `keepalive:"HTTP_GET"`
+type testReal struct {
+	IP               netip.Addr         `keepalive_pos:"0"`
+	Port             *uint16            `keepalive_pos:"1"`
+	Weight           int                `keepalive:"weight" default:"1"`
+	InhibitOnFailure bool               `keepalive:"inhibit_on_failure"`
+	CheckScheduler   CheckScheduler     `keepalive_nested:"scheduler"`
+	HTTPCheckers     []*testHTTPChecker `keepalive:"HTTP_GET"`
 }
 
 type CheckScheduler struct {
@@ -57,23 +57,23 @@ type CheckNet struct {
 	FwMark         int        `keepalive:"fwmark"`
 }
 
-type URL struct {
+type testURL struct {
 	Path       string `keepalive:"path"`
 	StatusCode int    `keepalive:"status_code"`
 	Digest     string `keepalive:"digest"`
 }
 
-type WeightControl struct {
+type testWeightControl struct {
 	DynamicWeight       bool `keepalive:"dynamic_weight_enable"`
 	DynamicWeightHeader bool `keepalive:"dynamic_weight_in_header"`
 	DynamicWeightCoeff  int  `keepalive:"dynamic_weight_coefficient"`
 }
 
-type HTTPChecker struct {
-	Scheduler     CheckScheduler `keepalive_nested:"scheduler"`
-	Net           CheckNet       `keepalive_nested:"net"`
-	URL           URL            `keepalive:"url"`
-	WeightControl WeightControl  `keepalive_nested:"weight_control"`
+type testHTTPChecker struct {
+	Scheduler     CheckScheduler    `keepalive_nested:"scheduler"`
+	Net           CheckNet          `keepalive_nested:"net"`
+	URL           testURL           `keepalive:"url"`
+	WeightControl testWeightControl `keepalive_nested:"weight_control"`
 }
 
 func TestConfig(t *testing.T) {
@@ -581,8 +581,8 @@ func TestDecodeConfigPosNotTagged(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, refCfg, cfgRoot.SubItems)
 
-	config := Config{
-		Services: []*Service{},
+	config := testConfig{
+		Services: []*testService{},
 	}
 
 	err = configDecode(&config, &cfgRoot)
@@ -613,8 +613,8 @@ func TestDefaultValueTag(t *testing.T) {
 	cfgRoot.SubItems, err = parseConfig(bufio.NewScanner(strings.NewReader(text)), "", "test.cfg", &unbalancedBraces)
 	assert.NoError(t, err)
 
-	config := Config{
-		Services: []*Service{},
+	config := testConfig{
+		Services: []*testService{},
 	}
 
 	err = configDecode(&config, &cfgRoot)
@@ -642,8 +642,8 @@ func TestOuterSourceNetwork(t *testing.T) {
 	cfgRoot.SubItems, err = parseConfig(bufio.NewScanner(strings.NewReader(text)), "", "test.cfg", &unbalancedBraces)
 	assert.NoError(t, err)
 
-	config := Config{
-		Services: []*Service{},
+	config := testConfig{
+		Services: []*testService{},
 	}
 
 	err = configDecode(&config, &cfgRoot)
@@ -701,8 +701,8 @@ func TestRetries(t *testing.T) {
 		cfgRoot.SubItems, err = parseConfig(bufio.NewScanner(strings.NewReader(test.text)), "", "test.cfg", &unbalancedBraces)
 		assert.NoError(t, err)
 
-		config := Config{
-			Services: []*Service{},
+		config := testConfig{
+			Services: []*testService{},
 		}
 
 		err = configDecode(&config, &cfgRoot)
