@@ -1,3 +1,4 @@
 gen/
 third_party/
 monalive
+/.agent-state/
