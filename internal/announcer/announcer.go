@@ -63,27 +63,33 @@ type Announcer struct {
 	announceGroups       *AnnounceGroupRegistry                      // contains association between prefix and it's announce group
 	serviceEventRegistry *event.Registry[key.Service, ServiceStatus] // stores service status updates using the service as a key
 
+	metrics *Metrics
+
 	shutdown *shutdown.Shutdown // shutdown mechanism to handle graceful termination
-	metrics  *Metrics
 	log      *log.Logger
 }
 
 // New creates a new instance of Announcer.
-func New(config *Config, client Client, provider metrics.Provider, logger *log.Logger) *Announcer {
-	a := &Announcer{
+func New(config *Config, client Client, metrics metrics.Provider, logger *log.Logger) *Announcer {
+	announcerMetrics := NewMetrics(metrics)
+
+	// Iterate over the configured groups and set the number of announced
+	// prefixes to 0, just to make sure that the labels of all groups are
+	// appeared at the metrics.
+	for _, group := range config.AnnounceGroup {
+		announcerMetrics.AnnouncedPrefixes(group).Set(0)
+	}
+
+	return &Announcer{
 		config:               config,
 		client:               client,
 		prefixes:             NewPrefixes(),
 		serviceEventRegistry: event.NewRegistry[key.Service, ServiceStatus](),
 		announceGroups:       NewAnnounceGroupRegistry(config.AnnounceGroup),
+		metrics:              announcerMetrics,
 		shutdown:             shutdown.New(),
 		log:                  logger,
-		metrics:              NewMetrics(provider),
 	}
-	for _, group := range config.AnnounceGroup {
-		a.metrics.announcedPrefixPerGroup.GetMetricWith(groupLabels(group)).Set(0)
-	}
-	return a
 }
 
 // Run starts the main processes of the Announcer: updating external announcer
@@ -158,7 +164,7 @@ func (m *Announcer) ReloadServices(services map[key.Service]string) error {
 
 	m.prefixes.ReloadServices(services)
 	m.announceGroups.Update(groupByPrefix)
-	m.announceGroups.ObserveGroupsSize(m.metrics.prefixPerGroup)
+	m.announceGroups.ObserveGroupsSize(m.metrics.PrefixesPerGroup())
 
 	return nil
 }

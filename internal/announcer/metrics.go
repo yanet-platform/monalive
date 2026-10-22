@@ -9,10 +9,16 @@ type Metrics struct {
 
 func NewMetrics(provider metrics.Provider) *Metrics {
 	return &Metrics{
-		prefixPerGroup: provider.GetGaugeVec("vip", []string{"announce_group"},
-			metrics.WithDescription("number of VIPs per announce group")),
-		announcedPrefixPerGroup: provider.GetGaugeVec("vip_announced", []string{"announce_group"},
-			metrics.WithDescription("number of announced VIPs per announce group")),
+		prefixPerGroup: provider.GetGaugeVec(
+			"vip",
+			[]string{"announce_group"},
+			metrics.WithDescription("number of VIPs per announce group"),
+		),
+		announcedPrefixPerGroup: provider.GetGaugeVec(
+			"vip_announced",
+			[]string{"announce_group"},
+			metrics.WithDescription("number of announced VIPs per announce group"),
+		),
 	}
 }
 
