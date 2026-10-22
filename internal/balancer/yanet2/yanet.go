@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 
 	"github.com/yanet-platform/monalive/gen/yanet2/common/commonpb"
 	"github.com/yanet-platform/monalive/gen/yanet2/modules/balancer/controlplane/balancerpb"
@@ -22,7 +23,10 @@ type Client struct {
 
 // NewClient creates a new YANET2 balancer module client instance.
 func NewClient(config *Config) (*Client, error) {
-	grpcClient, err := grpc.NewClient(config.Addr)
+	grpcClient, err := grpc.NewClient(
+		config.Addr,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create grpc client: %w", err)
 	}
