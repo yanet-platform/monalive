@@ -1,0 +1,99 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Go checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out Monalive
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      # Match the external API versions used when YANET2 support was added.
+      # Do not build against moving upstream branches.
+      - name: Check out Google API definitions
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          repository: googleapis/googleapis
+          ref: abdfd56b2637ca5a625e7890908fd1298523d51d
+          path: third_party/googleapis
+          sparse-checkout: google/api
+          persist-credentials: false
+
+      - name: Check out YANET API definitions
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          repository: yanet-platform/yanet
+          ref: 6caaab97378cb036be30dc42054708b9d4e2263d
+          path: third_party/yanet
+          sparse-checkout: libprotobuf
+          persist-credentials: false
+
+      - name: Check out YANET2 API definitions
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          repository: yanet-platform/yanet2
+          ref: f6e461d7ecc11516873df5bcefb73e7bf62e4920
+          path: third_party/yanet2
+          sparse-checkout: |
+            modules/balancer/controlplane/balancerpb
+            common/commonpb
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: '1.25.x'
+          cache: true
+
+      - name: Check formatting
+        run: |
+          unformatted=$(git ls-files -z '*.go' | xargs -0 gofmt -l)
+          if [ -n "$unformatted" ]; then
+            printf 'Run gofmt on these files:\n%s\n' "$unformatted"
+            exit 1
+          fi
+
+      - name: Install protobuf compiler and generators
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y protobuf-compiler libprotobuf-dev
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.8
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.5.1
+          go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway@v2.27.2
+          go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-openapiv2@v2.27.2
+
+      - name: Download and verify Go modules
+        run: |
+          go mod download
+          go mod verify
+
+      - name: Generate protobuf code
+        run: make generate
+
+      - name: Build for Linux
+        run: go build -mod=readonly -o monalive ./cmd/monalive
+
+      - name: Vet
+        run: go vet -mod=readonly ./...
+
+      - name: Unit tests
+        run: go test -mod=readonly -count=1 -timeout=5m ./...
+
+      - name: Check module files are unchanged
+        run: git diff --exit-code -- go.mod go.sum
