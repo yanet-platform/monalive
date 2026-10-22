@@ -131,6 +131,7 @@ func New(config Config, logger *log.Logger) (*CheckTun, error) {
 	}
 
 	checkTun.nf = nf
+	checkTun.sockets = sockets
 
 	return checkTun, nil
 }
