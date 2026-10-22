@@ -172,11 +172,12 @@ func (m *Service) Reload(config *Config) {
 	// Finally, replace the old reals map with the new one that contains the
 	// updated set of reals and update service config.
 	m.reals = newReals
+	forceAnnounce := m.config.AnnounceGroup == "" && config.AnnounceGroup != ""
 	m.config = config
 
 	// It is neccesary to process the status of the service announce after
 	// reload due to possible changes in the announce settings.
-	m.processAnnounce()
+	m.processAnnounce(forceAnnounce)
 }
 
 // Stop gracefully shuts down the service, stopping all associated reals and

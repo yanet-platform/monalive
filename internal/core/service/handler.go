@@ -25,7 +25,7 @@ func (m *Service) HandleEvent(event *xevent.Event) {
 	m.balancer.HandleEvent(event)
 
 	// Update the service announce status.
-	m.processAnnounce()
+	m.processAnnounce(false)
 }
 
 // processEvent processes an event received by the service.
@@ -75,10 +75,10 @@ func (m *Service) processFailure(event *xevent.Event) {
 
 // processAnnounce updates the service announce status based on the current
 // service state.
-func (m *Service) processAnnounce() {
+func (m *Service) processAnnounce(force bool) {
 	// Update the service announce status.
 	announceChanged := m.updateAnnounce()
-	if announceChanged && m.config.AnnounceGroup != "" {
+	if (announceChanged || force) && m.config.AnnounceGroup != "" {
 		// If the service announce status changed and service's announce group
 		// is set (which means that the service affects it's host prefix
 		// announce), then pass the update to the announcer.
