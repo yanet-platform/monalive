@@ -2,6 +2,7 @@ package service
 
 import (
 	log "go.uber.org/zap"
+	"time"
 
 	"github.com/yanet-platform/monalive/internal/announcer"
 	"github.com/yanet-platform/monalive/internal/types/weight"
@@ -125,8 +126,10 @@ func (m *Service) enableService() (changed bool) {
 
 	// Mark the service as enabled.
 	m.state.Alive = true
+	m.metrics.ServiceEnabled().Add(1)
 	// Increment the transition counter.
 	m.state.Transitions++
+	m.updateTransitionTimestamp()
 
 	m.log.Info(
 		"service enabled",
@@ -148,8 +151,10 @@ func (m *Service) disableService() (changed bool) {
 
 	// Mark the service disabled.
 	m.state.Alive = false
+	m.metrics.ServiceEnabled().Sub(1)
 	// Increment the transition counter.
 	m.state.Transitions++
+	m.updateTransitionTimestamp()
 
 	m.log.Info(
 		"service disabled",
@@ -159,6 +164,12 @@ func (m *Service) disableService() (changed bool) {
 	)
 	// Indicate that the state was changed.
 	return true
+}
+
+func (m *Service) updateTransitionTimestamp() {
+	timestamp := time.Now()
+	m.metrics.ServiceTransitionPeriod().Observe(timestamp.Sub(m.state.TransitionTimestamp).Seconds())
+	m.state.TransitionTimestamp = timestamp
 }
 
 // quorumState calculates the current quorum state based on the service weight

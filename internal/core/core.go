@@ -121,6 +121,8 @@ func (m *Core) Reload(config *Config) error {
 				newService := service.New(cfg, m.announcer, m.balancer, m.log)
 				serviceLabels := key.Labels()
 				newService.SetMetrics(
+					service.SetServiceEnabledMetric(m.metrics.ServiceEnabled(serviceLabels)),
+					service.SetServiceTransitionPeriodMetric(m.metrics.ServiceTransitionPeriod(serviceLabels)),
 					service.SetRealsEnabledMetric(m.metrics.RealsEnabledForService(serviceLabels)),
 					service.SetRealsMetric(m.metrics.RealsForService(serviceLabels)),
 					service.SetRealsTransitionPeriodMetric(m.metrics.RealsTrasitionPeriodForService(serviceLabels)),
@@ -132,6 +134,7 @@ func (m *Core) Reload(config *Config) error {
 				newServices[key] = newService
 				// Add new service to the pool.
 				m.servicesPool.Add(newService)
+				m.metrics.Service(serviceLabels).Add(1)
 			}
 		}
 	}
@@ -141,6 +144,7 @@ func (m *Core) Reload(config *Config) error {
 	for _, service := range m.services {
 		// Gracefully stop each outdated service.
 		service.Stop()
+		m.metrics.Service(service.Key().Labels()).Sub(1)
 		m.metrics.DeleteService(service.Key().Labels())
 	}
 
