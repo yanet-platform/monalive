@@ -117,6 +117,7 @@ func New(config *Config, handler xevent.Handler, logger *log.Logger, opts ...Opt
 		checkersPool: workerpool.New(),
 		handler:      handler,
 		metrics:      NewMetrics(),
+		state:        State{TransitionTimestamp: time.Now()},
 		shutdown:     shutdown.New(),
 		log:          logger,
 	}
