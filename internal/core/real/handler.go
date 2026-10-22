@@ -5,8 +5,8 @@ import (
 
 	log "go.uber.org/zap"
 
-	"github.com/yanet-platform/monalive/internal/types/weight"
 	"github.com/yanet-platform/monalive/internal/types/xevent"
+	"github.com/yanet-platform/monalive/pkg/weight"
 )
 
 // HandleEvent handles an event sent from the checker.

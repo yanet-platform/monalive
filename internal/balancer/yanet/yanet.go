@@ -7,8 +7,8 @@ import (
 	"fmt"
 
 	"github.com/yanet-platform/monalive/internal/types/key"
-	"github.com/yanet-platform/monalive/internal/types/port"
-	"github.com/yanet-platform/monalive/internal/types/weight"
+	port "github.com/yanet-platform/monalive/pkg/optport"
+	"github.com/yanet-platform/monalive/pkg/weight"
 	"github.com/yanet-platform/monalive/pkg/yanet"
 
 	yanetpb "github.com/yanet-platform/monalive/gen/yanet/libprotobuf"

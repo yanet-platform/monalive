@@ -1,4 +1,4 @@
-package service
+package keepalived
 
 import (
 	"net/netip"
@@ -6,19 +6,17 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/yanet-platform/monalive/internal/core/real"
 )
 
-func defaultServiceConfig() *Config {
-	cfg := DefaultConfig()
-	cfg.Reals = append(cfg.Reals, real.DefaultConfig())
+func defaultServiceConfig() *Service {
+	cfg := DefaultService()
+	cfg.Reals = append(cfg.Reals, DefaultReal())
 	return cfg
 }
 
 // TestPrepare_IPUnmap checks that IPv4-mapped IPv6 addresses are converted to
 // IPv4.
-func TestPrepare_IPUnmap(t *testing.T) {
+func TestServicePrepare_IPUnmap(t *testing.T) {
 	// Create a configuration with IPv4-mapped IPv6 address.
 	cfg := defaultServiceConfig()
 	cfg.VIP = netip.MustParseAddr("::ffff:192.168.1.1") // IPv4-mapped IPv6 address
@@ -29,7 +27,7 @@ func TestPrepare_IPUnmap(t *testing.T) {
 }
 
 // TestPrepare_ProtocolUppercase checks that protocol is converted to uppercase.
-func TestPrepare_ProtocolUppercase(t *testing.T) {
+func TestServicePrepare_ProtocolUppercase(t *testing.T) {
 	// Create a configuration with lowercase protocol.
 	cfg := defaultServiceConfig()
 	cfg.Protocol = "tcp"
@@ -41,7 +39,7 @@ func TestPrepare_ProtocolUppercase(t *testing.T) {
 
 // TestPrepare_ForwardingMethodUppercase checks that forwarding method is
 // converted to uppercase.
-func TestPrepare_ForwardingMethodUppercase(t *testing.T) {
+func TestServicePrepare_ForwardingMethodUppercase(t *testing.T) {
 	// Create a configuration with lowercase forwarding method.
 	cfg := defaultServiceConfig()
 	cfg.ForwardingMethod = "tun"
@@ -53,7 +51,7 @@ func TestPrepare_ForwardingMethodUppercase(t *testing.T) {
 
 // TestPrepare_LVSSchedulerUppercase checks that LVS scheduler is converted to
 // lowercase.
-func TestPrepare_LVSSchedulerUppercase(t *testing.T) {
+func TestServicePrepare_LVSSchedulerUppercase(t *testing.T) {
 	// Create a configuration with uppercase LVS scheduler.
 	cfg := defaultServiceConfig()
 	cfg.LVSSheduler = "WRR"
@@ -65,7 +63,7 @@ func TestPrepare_LVSSchedulerUppercase(t *testing.T) {
 
 // TestPrepare_PropagateForwardingMethod tests the behavior of ForwardingMethod
 // propagation to reals.
-func TestPrepare_PropagateForwardingMethod(t *testing.T) {
+func TestServicePrepare_PropagateForwardingMethod(t *testing.T) {
 	// Create a configuration with empty ForwardingMethod.
 	cfg := defaultServiceConfig()
 	cfg.Reals[0].ForwardingMethod = "" // empty ForwardingMethod in service
@@ -79,7 +77,7 @@ func TestPrepare_PropagateForwardingMethod(t *testing.T) {
 
 // TestPrepare_PropagateSchedulerSettings checks that scheduler settings are
 // propagated to reals.
-func TestPrepare_PropagateSchedulerSettings(t *testing.T) {
+func TestServicePrepare_PropagateSchedulerSettings(t *testing.T) {
 	// Create a configuration with scheduler settings.
 	cfg := defaultServiceConfig()
 	delayLoop := 30.0
@@ -102,7 +100,7 @@ func TestPrepare_PropagateSchedulerSettings(t *testing.T) {
 
 // TestPrepare_PropagateVirtualhost checks that Virtualhost is propagated to
 // reals.
-func TestPrepare_PropagateVirtualhost(t *testing.T) {
+func TestServicePrepare_PropagateVirtualhost(t *testing.T) {
 	// Create a configuration with Virtualhost
 	cfg := defaultServiceConfig()
 	virtualhost := "example.com"
@@ -116,7 +114,7 @@ func TestPrepare_PropagateVirtualhost(t *testing.T) {
 
 // TestPrepare_PropagateWithExistingValues checks that existing values in reals
 // are not overwritten.
-func TestPrepare_PropagateWithExistingValues(t *testing.T) {
+func TestServicePrepare_PropagateWithExistingValues(t *testing.T) {
 	// Create a configuration with settings.
 	cfg := defaultServiceConfig()
 	serviceDelayLoop := 30.0
@@ -147,11 +145,11 @@ func TestPrepare_PropagateWithExistingValues(t *testing.T) {
 
 // TestPrepare_ComplexConfig tests Prepare() on a more complex configuration
 // with multiple reals.
-func TestPrepare_ComplexConfig(t *testing.T) {
+func TestServicePrepare_ComplexConfig(t *testing.T) {
 	// Create a configuration with multiple reals.
 	cfg := defaultServiceConfig()
 	// Add a second real.
-	real2 := real.DefaultConfig()
+	real2 := DefaultReal()
 	real2.IP = netip.MustParseAddr("::ffff:10.0.0.2") // IPv4-mapped IPv6
 	// Set empty ForwardingMethod so it propagates from the service.
 	real2.ForwardingMethod = ""

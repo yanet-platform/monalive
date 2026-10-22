@@ -11,10 +11,10 @@ import (
 	"net/http"
 	"net/netip"
 
-	"github.com/yanet-platform/monalive/internal/types/weight"
 	"github.com/yanet-platform/monalive/internal/utils/exp"
 	"github.com/yanet-platform/monalive/internal/utils/xnet"
 	"github.com/yanet-platform/monalive/internal/utils/xtls"
+	"github.com/yanet-platform/monalive/pkg/weight"
 )
 
 const UserAgentRequestHeader = "monalive"

@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/yanet-platform/monalive/internal/types/key"
-	"github.com/yanet-platform/monalive/internal/types/port"
+	port "github.com/yanet-platform/monalive/pkg/optport"
 
 	yanetpb "github.com/yanet-platform/monalive/gen/yanet/libprotobuf"
 )

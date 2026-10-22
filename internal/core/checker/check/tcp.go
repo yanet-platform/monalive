@@ -6,8 +6,8 @@ import (
 	"net"
 	"net/netip"
 
-	"github.com/yanet-platform/monalive/internal/types/weight"
 	"github.com/yanet-platform/monalive/internal/utils/xnet"
+	"github.com/yanet-platform/monalive/pkg/weight"
 )
 
 var (

@@ -8,9 +8,10 @@ import (
 	"github.com/stretchr/testify/require"
 	log "go.uber.org/zap"
 
-	"github.com/yanet-platform/monalive/internal/types/port"
-	"github.com/yanet-platform/monalive/internal/types/weight"
 	"github.com/yanet-platform/monalive/internal/types/xevent"
+	"github.com/yanet-platform/monalive/pkg/keepalived"
+	port "github.com/yanet-platform/monalive/pkg/optport"
+	"github.com/yanet-platform/monalive/pkg/weight"
 )
 
 // testHandler is a test implementation of the xevent.Handler interface. It
@@ -34,8 +35,10 @@ func (m *testHandler) Event() *xevent.Event {
 // handler.
 func defaultReal(weight weight.Weight, handler xevent.Handler) *Real {
 	config := &Config{
-		IP:               netip.MustParseAddr("127.0.0.1"),
-		Port:             port.Port(80),
+		RSKey: keepalived.RSKey{
+			IP:   netip.MustParseAddr("127.0.0.1"),
+			Port: port.Port(80),
+		},
 		InhibitOnFailure: false,
 		Weight:           weight,
 	}

@@ -14,9 +14,9 @@ import (
 	"github.com/yanet-platform/monalive/internal/balancer"
 	"github.com/yanet-platform/monalive/internal/core/real"
 	"github.com/yanet-platform/monalive/internal/types/key"
-	"github.com/yanet-platform/monalive/internal/types/weight"
 	"github.com/yanet-platform/monalive/internal/utils/shutdown"
 	"github.com/yanet-platform/monalive/internal/utils/workerpool"
+	"github.com/yanet-platform/monalive/pkg/weight"
 )
 
 // Service represents a virtual server with underlying reals (individual backend
@@ -109,10 +109,17 @@ func (m *Service) Reload(config *Config) {
 	m.realsMu.Lock()
 	defer m.realsMu.Unlock()
 
+	// Convert the keepalived reals configuration to the internal
+	// representation.
+	reals := make([]*real.Config, len(config.Reals))
+	for i, r := range config.Reals {
+		reals[i] = (*real.Config)(r)
+	}
+
 	// Prepare a new map to hold the new set of reals.
 	// This map will eventually replace the existing reals map.
 	newReals := make(map[key.Real]*real.Real)
-	for _, cfg := range config.Reals {
+	for _, cfg := range reals {
 		select {
 		// Check if the shutdown signal has been triggered.
 		case <-m.shutdown.Done():

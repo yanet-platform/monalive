@@ -15,10 +15,10 @@ import (
 
 	"github.com/yanet-platform/monalive/internal/announcer"
 	"github.com/yanet-platform/monalive/internal/types/key"
-	"github.com/yanet-platform/monalive/internal/types/weight"
 	"github.com/yanet-platform/monalive/internal/types/xevent"
 	event "github.com/yanet-platform/monalive/internal/utils/event_registry"
 	"github.com/yanet-platform/monalive/internal/utils/shutdown"
+	"github.com/yanet-platform/monalive/pkg/weight"
 )
 
 // LoadBalancerClient defines the interface that a balancer client must implement.
