@@ -9,8 +9,10 @@ import (
 type SetMetricFunc func(*Metrics)
 
 type Metrics struct {
-	reals        metrics.Gauge
-	realsEnabled metrics.Gauge
+	serviceEnabled          metrics.Gauge
+	serviceTransitionPeriod metrics.Histogram
+	reals                   metrics.Gauge
+	realsEnabled            metrics.Gauge
 
 	realsTransitionPeriod metrics.Histogram
 	realsResponseTime     metrics.Histogram
@@ -23,8 +25,10 @@ type Metrics struct {
 
 func NewMetrics() *Metrics {
 	m := &Metrics{
-		reals:        &metrics.NopGauge{},
-		realsEnabled: &metrics.NopGauge{},
+		serviceEnabled:          &metrics.NopGauge{},
+		serviceTransitionPeriod: &metrics.NopHistogram{},
+		reals:                   &metrics.NopGauge{},
+		realsEnabled:            &metrics.NopGauge{},
 
 		realsTransitionPeriod: &metrics.NopHistogram{},
 		realsResponseTime:     &metrics.NopHistogram{},
@@ -33,6 +37,34 @@ func NewMetrics() *Metrics {
 	}
 
 	return m
+}
+
+func (m *Metrics) ServiceEnabled() metrics.Gauge {
+	return m.serviceEnabled
+}
+
+func (m *Metrics) ServiceTransitionPeriod() metrics.Histogram {
+	return m.serviceTransitionPeriod
+}
+
+func SetServiceEnabledMetric(gauge metrics.Gauge) SetMetricFunc {
+	return func(m *Metrics) {
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		if !m.isBlocked {
+			m.serviceEnabled = gauge
+		}
+	}
+}
+
+func SetServiceTransitionPeriodMetric(histogram metrics.Histogram) SetMetricFunc {
+	return func(m *Metrics) {
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		if !m.isBlocked {
+			m.serviceTransitionPeriod = histogram
+		}
+	}
 }
 
 func (m *Metrics) RealsTotal() metrics.Gauge {

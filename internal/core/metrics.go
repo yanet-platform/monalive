@@ -7,6 +7,13 @@ import (
 
 // Metrics ...
 type Metrics struct {
+	servicesEnabled               metrics.GaugeVec
+	serviceEnabledTotal           metrics.Gauge
+	services                      metrics.GaugeVec
+	servicesTotal                 metrics.Gauge
+	servicesTransitionPeriod      metrics.HistogramVec
+	servicesTransitionPeriodTotal metrics.Histogram
+
 	realsEnabled           metrics.Gauge
 	realsEnabledPerService metrics.GaugeVec
 
@@ -28,6 +35,20 @@ func NewMetrics(provider *metrics.ScopedMetrics) *Metrics {
 	var dummyServiceKey key.Service
 	serviceLabelNames := dummyServiceKey.LabelNames()
 	return &Metrics{
+		serviceEnabledTotal: provider.Scope(metrics.Global).GetGauge(
+			"services_enabled", metrics.WithDescription("number of enabled services")),
+		servicesEnabled: provider.Scope(metrics.PerService).GetGaugeVec(
+			"service_enabled", serviceLabelNames, metrics.WithDescription("0 if service is disabled, 1 if service is enabled")),
+		servicesTotal: provider.Scope(metrics.Global).GetGauge(
+			"services", metrics.WithDescription("number of services")),
+		services: provider.Scope(metrics.PerService).GetGaugeVec(
+			"service", serviceLabelNames, metrics.WithDescription("1 if service defined")),
+		servicesTransitionPeriod: provider.Scope(metrics.PerService).GetHistogramVec(
+			"service_transitions", []float64{10, 30, 60, 180}, serviceLabelNames,
+			metrics.WithDescription("observe service transition period")),
+		servicesTransitionPeriodTotal: provider.Scope(metrics.Global).GetHistogram(
+			"services_transitions", []float64{10, 30, 60, 180},
+			metrics.WithDescription("observe general services transition period")),
 		realsEnabled: provider.Scope(metrics.Global).GetGauge(
 			"reals_enabled",
 			metrics.WithDescription("number of enabled reals"),
@@ -85,6 +106,18 @@ func NewMetrics(provider *metrics.ScopedMetrics) *Metrics {
 	}
 }
 
+func (m *Metrics) ServiceEnabled(labels metrics.Labels) metrics.Gauge {
+	return metrics.NewGaugeUnion(m.servicesEnabled.GetMetricWith(labels), m.serviceEnabledTotal)
+}
+
+func (m *Metrics) Service(labels metrics.Labels) metrics.Gauge {
+	return metrics.NewGaugeUnion(m.services.GetMetricWith(labels), m.servicesTotal)
+}
+
+func (m *Metrics) ServiceTransitionPeriod(labels metrics.Labels) metrics.Histogram {
+	return metrics.NewHistogramUnion(m.servicesTransitionPeriod.GetMetricWith(labels), m.servicesTransitionPeriodTotal)
+}
+
 func (m *Metrics) RealsEnabled() metrics.Gauge {
 	return m.realsEnabled
 }
@@ -129,6 +162,9 @@ func (m *Metrics) RealsErrorsForService(serviceLabels metrics.Labels) metrics.Co
 }
 
 func (m *Metrics) DeleteService(serviceLabels metrics.Labels) {
+	m.servicesEnabled.Delete(serviceLabels)
+	m.services.Delete(serviceLabels)
+	m.servicesTransitionPeriod.Delete(serviceLabels)
 	m.realsEnabledPerService.Delete(serviceLabels)
 	m.realsPerService.Delete(serviceLabels)
 	m.realsTrasitionPeriodPerService.Delete(serviceLabels)

@@ -8,6 +8,7 @@ import (
 
 	"github.com/yanet-platform/monalive/internal/announcer"
 	"github.com/yanet-platform/monalive/internal/balancer"
+	"github.com/yanet-platform/monalive/internal/monitoring/metrics"
 	"github.com/yanet-platform/monalive/internal/types/weight"
 	"github.com/yanet-platform/monalive/internal/types/xevent"
 )
@@ -19,7 +20,7 @@ func defaultService() *Service {
 		Quorum:     1,
 		Hysteresis: 0,
 	}
-	announcer := announcer.New(&announcer.Config{}, nil, log.NewNop())
+	announcer := announcer.New(&announcer.Config{}, nil, &metrics.NopProvider{}, log.NewNop())
 	balancer := balancer.New(&balancer.Config{}, nil, announcer, log.NewNop())
 	return New(serviceConfig, announcer, balancer, log.NewNop())
 }

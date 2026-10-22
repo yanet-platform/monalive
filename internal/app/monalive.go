@@ -63,7 +63,7 @@ func New(config Config, logger *log.Logger) (*Monalive, error) {
 	}
 
 	// Create an announcer instance.
-	announcer := announcer.New(config.Announcer, bird, logger)
+	announcer := announcer.New(config.Announcer, bird, scopedMetrics.Scope(metrics.Global), logger)
 
 	var balancerClient balancer.LoadBalancerClient
 	switch {

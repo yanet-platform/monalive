@@ -6,6 +6,7 @@ package service
 import (
 	"context"
 	"sync"
+	"time"
 
 	log "go.uber.org/zap"
 
@@ -45,10 +46,11 @@ type Service struct {
 
 // State represents the current state of the service.
 type State struct {
-	Alive       bool
-	Weight      weight.Weight
-	RealsAlive  int
-	Transitions int
+	Alive               bool
+	Weight              weight.Weight
+	RealsAlive          int
+	Transitions         int
+	TransitionTimestamp time.Time
 }
 
 // New creates a new Service instance.
@@ -71,6 +73,7 @@ func New(config *Config, announcer *announcer.Announcer, balancer *balancer.Bala
 		realsPool: workerpool.New(),
 
 		metrics: NewMetrics(),
+		state:   State{TransitionTimestamp: time.Now()},
 
 		shutdown: shutdown.New(),
 		log:      logger,

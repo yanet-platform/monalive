@@ -15,6 +15,7 @@ import (
 	log "go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/yanet-platform/monalive/internal/monitoring/metrics"
 	"github.com/yanet-platform/monalive/internal/types/key"
 	event "github.com/yanet-platform/monalive/internal/utils/event_registry"
 	"github.com/yanet-platform/monalive/internal/utils/shutdown"
@@ -62,18 +63,30 @@ type Announcer struct {
 	announceGroups       *AnnounceGroupRegistry                      // contains association between prefix and it's announce group
 	serviceEventRegistry *event.Registry[key.Service, ServiceStatus] // stores service status updates using the service as a key
 
+	metrics *Metrics
+
 	shutdown *shutdown.Shutdown // shutdown mechanism to handle graceful termination
 	log      *log.Logger
 }
 
 // New creates a new instance of Announcer.
-func New(config *Config, client Client, logger *log.Logger) *Announcer {
+func New(config *Config, client Client, metrics metrics.Provider, logger *log.Logger) *Announcer {
+	announcerMetrics := NewMetrics(metrics)
+
+	// Iterate over the configured groups and set the number of announced
+	// prefixes to 0, just to make sure that the labels of all groups are
+	// appeared at the metrics.
+	for _, group := range config.AnnounceGroup {
+		announcerMetrics.AnnouncedPrefixes(group).Set(0)
+	}
+
 	return &Announcer{
 		config:               config,
 		client:               client,
 		prefixes:             NewPrefixes(),
 		serviceEventRegistry: event.NewRegistry[key.Service, ServiceStatus](),
 		announceGroups:       NewAnnounceGroupRegistry(config.AnnounceGroup),
+		metrics:              announcerMetrics,
 		shutdown:             shutdown.New(),
 		log:                  logger,
 	}
@@ -151,6 +164,7 @@ func (m *Announcer) ReloadServices(services map[key.Service]string) error {
 
 	m.prefixes.ReloadServices(services)
 	m.announceGroups.Update(groupByPrefix)
+	m.announceGroups.ObserveGroupsSize(m.metrics.PrefixesPerGroup())
 
 	return nil
 }
@@ -195,6 +209,11 @@ func (m *Announcer) updater() {
 					eventsByGroup[group] = make(map[netip.Prefix]PrefixStatus)
 				}
 				eventsByGroup[group][prefix] = status
+				diff := float64(1)
+				if status == Unready {
+					diff = -1
+				}
+				m.metrics.AnnouncedPrefixes(group).Add(diff)
 			}
 
 			// Send the update events to the client for processing.
@@ -287,6 +306,14 @@ func (m *Announcer) removeAll() {
 				log.Error(err),
 			)
 		}
+	}
+}
+
+func (m *AnnounceGroupRegistry) ObserveGroupsSize(gauge metrics.GaugeVec) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	for group := range m.groups {
+		gauge.GetMetricWith(groupLabels(group)).Set(float64(len(m.prefixesByGroup[group])))
 	}
 }
 
