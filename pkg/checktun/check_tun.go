@@ -112,14 +112,25 @@ func New(config Config, logger *log.Logger) (*CheckTun, error) {
 		return nil, fmt.Errorf("failed to set read buffer: %w", err)
 	}
 
+	if err := checkTun.initSockets(checkTun.newSocket); err != nil {
+		return nil, err
+	}
+
+	checkTun.nf = nf
+
+	return checkTun, nil
+}
+
+// initSockets retains the encapsulation sockets for subsequent packet sends.
+func (c *CheckTun) initSockets(openSocket func(domain, proto int) (int, error)) error {
 	domains := []int{syscall.AF_INET, syscall.AF_INET6}
 	protos := []int{syscall.IPPROTO_IPIP, syscall.IPPROTO_IPV6, syscall.IPPROTO_GRE}
 	sockets := make(map[int]map[int]int)
 	for _, domain := range domains {
 		for _, proto := range protos {
-			fd, err := checkTun.newSocket(domain, proto)
+			fd, err := openSocket(domain, proto)
 			if err != nil {
-				return nil, fmt.Errorf("failed to create socket: %w", err)
+				return fmt.Errorf("failed to create socket: %w", err)
 			}
 
 			if _, ok := sockets[domain]; !ok {
@@ -130,9 +141,8 @@ func New(config Config, logger *log.Logger) (*CheckTun, error) {
 		}
 	}
 
-	checkTun.nf = nf
-
-	return checkTun, nil
+	c.sockets = sockets
+	return nil
 }
 
 func (c *CheckTun) Run(ctx context.Context) error {
