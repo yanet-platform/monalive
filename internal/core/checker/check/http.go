@@ -80,10 +80,11 @@ func NewHTTPCheck(config Config, forwardingData xnet.ForwardingData, opts ...HTT
 	dialer := xnet.NewDialer(config.BindIP, config.GetConnectTimeout(), forwardingData)
 	check.client = http.Client{
 		Transport: &http.Transport{
-			TLSClientConfig:     check.tlsConfig,    // set TLS configuration if available
-			MaxIdleConnsPerHost: -1,                 // disable connection pooling
-			DisableKeepAlives:   true,               // disable keep-alives
-			DialContext:         dialer.DialContext, // use custom dialer
+			TLSHandshakeTimeout: config.GetConnectTimeout(), // bound TLS setup as well as TCP connect
+			TLSClientConfig:     check.tlsConfig,            // set TLS configuration if available
+			MaxIdleConnsPerHost: -1,                         // disable connection pooling
+			DisableKeepAlives:   true,                       // disable keep-alives
+			DialContext:         dialer.DialContext,         // use custom dialer
 		},
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			return http.ErrUseLastResponse // do not follow redirects
