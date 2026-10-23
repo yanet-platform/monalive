@@ -90,6 +90,11 @@ server IP address belongs.
 
 #### Real Server
 
+Monalive supports at most one checker per real server across `TCP_CHECK`,
+`HTTP_GET`, `SSL_GET`, and `GRPC_CHECK`. Its core configuration validation rejects
+multiple checkers, including multiple blocks of the same type. This restriction
+does not apply to the generic `pkg/keepalived` parser.
+
 Similar to the Virtual Server, most parameters match those in Keepalived:
 
 - `ip` – Real server's IP address.

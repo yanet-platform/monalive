@@ -38,9 +38,13 @@ func KeepalivedConfigLoader(path string) (*Config, error) {
 		services[i] = (*service.Config)(s)
 	}
 
-	return &Config{
+	config := &Config{
 		Services: services,
-	}, nil
+	}
+	if err := config.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid services config: %w", err)
+	}
+	return config, nil
 }
 
 // JSONConfigLoader is intended to load a configuration from a JSON file.
@@ -55,6 +59,19 @@ func JSONConfigLoader(path string) (*Config, error) {
 type Config struct {
 	// List of virtual servers configurations.
 	Services []*service.Config
+}
+
+// Validate checks Monalive-specific constraints on the services configuration.
+func (m *Config) Validate() error {
+	for _, service := range m.Services {
+		for _, real := range service.Reals {
+			count := len(real.TCPCheckers) + len(real.HTTPCheckers) + len(real.HTTPSCheckers) + len(real.GRPCCheckers)
+			if count > 1 {
+				return fmt.Errorf("real_server %s (port %q): at most one checker is supported, got %d", real.IP, real.Port, count)
+			}
+		}
+	}
+	return nil
 }
 
 // Dump serializes the configuration to a JSON file at the specified path. It
