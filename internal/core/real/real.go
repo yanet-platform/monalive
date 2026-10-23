@@ -38,7 +38,7 @@ type Real struct {
 	checkersPool *workerpool.Pool
 
 	state   State        // current state of the real
-	stateMu sync.RWMutex // to protect concurent access to the state
+	stateMu sync.RWMutex // to protect concurrent access to the state and config
 
 	handler  xevent.Handler // callback event handler function provided by the parent service
 	eventsWG sync.WaitGroup // to manage goroutines handling events
@@ -169,7 +169,9 @@ func (m *Real) Reload(config *Config) {
 
 	if !m.isActive {
 		// If the real is not active yet, save the new config and return early.
+		m.stateMu.Lock()
 		m.config = config
+		m.stateMu.Unlock()
 		return
 	}
 
@@ -216,23 +218,6 @@ func (m *Real) SetMetrics(setMetricFunc ...SetMetricFunc) {
 }
 
 func (m *Real) reload(config *Config) {
-	// Prepare forwarding data that will be used by the checkers.
-	forwardingData := xnet.ForwardingData{
-		RealIP:           config.IP,
-		ForwardingMethod: config.ForwardingMethod,
-	}
-
-	// Check if the forwarding method has changed. If so, force a reload of the
-	// checkers.
-	forceReload := false
-	if m.config.ForwardingMethod != config.ForwardingMethod {
-		m.log.Info(
-			"forwarding method changed, force reload checkers",
-			log.String("event_type", "real update"),
-		)
-		forceReload = true
-	}
-
 	// Track if any checker supports dynamic weight.
 	dynamicWeight := false
 
@@ -250,6 +235,34 @@ func (m *Real) reload(config *Config) {
 	checkers := make([]*checker.Config, len(keepalevidCheckers))
 	for i, cfg := range keepalevidCheckers {
 		checkers[i] = (*checker.Config)(cfg)
+		dynamicWeight = dynamicWeight || cfg.DynamicWeight
+	}
+
+	// Publish the config before checkers can report an updated weight. Keep
+	// the current state weight until an event records the transition from it.
+	m.stateMu.Lock()
+	previousConfig := m.config
+	m.config = config
+	m.state.DynWeight = dynamicWeight
+	// Do not hold stateMu while updating checkers: their event handlers acquire
+	// it while holding the checker's state mutex.
+	m.stateMu.Unlock()
+
+	// Prepare forwarding data that will be used by the checkers.
+	forwardingData := xnet.ForwardingData{
+		RealIP:           config.IP,
+		ForwardingMethod: config.ForwardingMethod,
+	}
+
+	// Check if the forwarding method has changed. If so, force a reload of the
+	// checkers.
+	forceReload := false
+	if previousConfig.ForwardingMethod != config.ForwardingMethod {
+		m.log.Info(
+			"forwarding method changed, force reload checkers",
+			log.String("event_type", "real update"),
+		)
+		forceReload = true
 	}
 
 	// Map to store the new set of checkers after reloading.
@@ -270,7 +283,7 @@ func (m *Real) reload(config *Config) {
 				// its initialization. Since it is possible that the weight has
 				// changed in the configuration, we need to update the checker's
 				// weight manually.
-				if m.config.Weight != config.Weight {
+				if previousConfig.Weight != config.Weight {
 					// If the weight has changed, update it.
 					knownChecker.UpdateWeight(config.Weight)
 				}
@@ -295,9 +308,6 @@ func (m *Real) reload(config *Config) {
 				// Add new checker to the pool.
 				m.checkersPool.Add(newChecker)
 			}
-
-			// Update the dynamicWeight flag.
-			dynamicWeight = dynamicWeight || cfg.DynamicWeight
 		}
 	}
 
@@ -307,13 +317,7 @@ func (m *Real) reload(config *Config) {
 		checker.Stop()
 	}
 
-	// Update the state to reflect if dynamic weight is used.
-	m.stateMu.Lock()
-	m.state.DynWeight = dynamicWeight
-	m.stateMu.Unlock()
-
-	//  Save the new config and the updated set of checkers.
-	m.config = config
+	// Save the updated set of checkers.
 	m.checkersMu.Lock()
 	defer m.checkersMu.Unlock()
 	m.checkers = newCheckers
