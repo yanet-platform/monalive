@@ -68,6 +68,10 @@ func (m *Core) Run(ctx context.Context) {
 // configuration. Finally, it stops services that are no longer present in the
 // new configuration and replaces the old services with the new ones.
 func (m *Core) Reload(config *Config) error {
+	if err := config.Validate(); err != nil {
+		return fmt.Errorf("invalid services config: %w", err)
+	}
+
 	// Lock the services mutex to ensure thread-safe access.
 	m.servicesMu.Lock()
 	defer m.servicesMu.Unlock()
