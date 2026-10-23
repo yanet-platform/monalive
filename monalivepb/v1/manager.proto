@@ -1,12 +1,12 @@
 syntax = "proto3";
 
-package monalive;
+package monalivepb.v1;
 
 import "google/api/annotations.proto"; 
 import "google/protobuf/duration.proto";
 import "google/protobuf/timestamp.proto";
 
-option go_package = "github.com/yanet-platform/monalive/proto;monalivepb";
+option go_package = "github.com/yanet-platform/monalive/monalivepb/v1;monalivepb";
 
 // Define the MonaliveManager service with two RPC methods: Reload and
 // GetStatus.

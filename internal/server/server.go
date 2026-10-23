@@ -14,9 +14,9 @@ import (
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/protobuf/encoding/protojson"
 
-	monalivepb "github.com/yanet-platform/monalive/gen/manager"
 	"github.com/yanet-platform/monalive/internal/monitoring/metrics"
 	"github.com/yanet-platform/monalive/internal/utils/runtimemetrics"
+	monalivepb "github.com/yanet-platform/monalive/monalivepb/v1"
 )
 
 // Server is used to handle requests for various management operations with

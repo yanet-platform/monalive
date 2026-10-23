@@ -4,7 +4,7 @@ import (
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	monalivepb "github.com/yanet-platform/monalive/gen/manager"
+	monalivepb "github.com/yanet-platform/monalive/monalivepb/v1"
 )
 
 // Status returns [monalivepb.CheckerStatus] messages representing the status of
