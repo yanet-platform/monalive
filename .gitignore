@@ -1,4 +1,7 @@
 gen/
+*.pb.go
+*.pb.gw.go
+*.swagger.json
 third_party/
 monalive
 /.agent-state/

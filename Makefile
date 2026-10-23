@@ -1,8 +1,11 @@
 MONALIVE_PROJECT := github.com/yanet-platform/monalive
 
-MANAGER_PROTO_DIR := proto
-MANAGER_OUT_DIR := gen/manager
+MANAGER_PROTO_DIR := monalivepb/v1
 MANAGER_PROTO_FILES := $(wildcard $(MANAGER_PROTO_DIR)/*.proto)
+MANAGER_GENERATED_FILES := $(MANAGER_PROTO_FILES:.proto=.pb.go) \
+	$(MANAGER_PROTO_FILES:.proto=_grpc.pb.go) \
+	$(MANAGER_PROTO_FILES:.proto=.pb.gw.go) \
+	$(MANAGER_PROTO_FILES:.proto=.swagger.json)
 
 YANET_DIR := third_party/yanet
 YANET_PROTO_DIR := libprotobuf
@@ -42,27 +45,23 @@ $(YANET2_DIR):
 		$(YANET2_BALANCER_PROTO_DIR) \
 		$(YANET2_COMMON_PROTO_DIR)
 
-# Generate code for local .proto files
+# Generate local API code next to its .proto sources, as in YANET2.
 generate-local: $(GOOGLE_API_DIR)
-	@mkdir -p $(MANAGER_OUT_DIR)
-	@protoc -I=$(MANAGER_PROTO_DIR) -I=$(GOOGLE_API_DIR) -I=$(PROTOBUF_INCLUDE) \
-		--go_out=$(MANAGER_OUT_DIR) \
-		--go_opt=paths=source_relative \
-		--go-grpc_out=$(MANAGER_OUT_DIR) \
-		--go-grpc_opt=paths=source_relative \
+	@protoc -I=. -I=$(GOOGLE_API_DIR) -I=$(PROTOBUF_INCLUDE) \
+		--go_out=paths=source_relative:. \
+		--go-grpc_out=paths=source_relative:. \
 		--go-grpc_opt=require_unimplemented_servers=false \
-		--grpc-gateway_out=$(MANAGER_OUT_DIR) \
-		--grpc-gateway_opt=paths=source_relative \
-		--openapiv2_out=$(MANAGER_OUT_DIR) \
+		--grpc-gateway_out=paths=source_relative:. \
+		--openapiv2_out=. \
 		$(MANAGER_PROTO_FILES)
 	@echo "✅ Local .proto files generated"
 
 # Generate code for YANET .proto files
 generate-yanet: $(YANET_DIR)
 	@mkdir -p $(YANET_OUT_DIR)
-	@FILES=$$(realpath --relative-to=$(YANET_DIR) $(YANET_DIR)/$(YANET_PROTO_DIR)/*.proto); \
-	GO_OPTS=; GRPC_OPTS=; \
-	for file in $$FILES; do \
+	@set -e; GO_OPTS=; GRPC_OPTS=; \
+	for file in $(YANET_DIR)/$(YANET_PROTO_DIR)/*.proto; do \
+		file=$${file#$(YANET_DIR)/}; \
 		GO_OPTS=$$GO_OPTS"--go_opt=M$$file=$(YANET_MODULE) "; \
 		GRPC_OPTS=$$GRPC_OPTS"--go-grpc_opt=M$$file=$(YANET_MODULE) "; \
 	done; \
@@ -80,14 +79,14 @@ generate-yanet: $(YANET_DIR)
 # Generate code for YANET2 balancer .proto files
 generate-yanet2: $(YANET2_DIR)
 	@mkdir -p $(YANET2_OUT_DIR)
-	@FILES=$$(realpath --relative-to=$(YANET2_DIR) $(YANET2_DIR)/$(YANET2_COMMON_PROTO_DIR)/*.proto); \
-	GO_OPTS=; GRPC_OPTS=; \
-	for file in $$FILES; do \
+	@set -e; GO_OPTS=; GRPC_OPTS=; \
+	for file in $(YANET2_DIR)/$(YANET2_COMMON_PROTO_DIR)/*.proto; do \
+		file=$${file#$(YANET2_DIR)/}; \
 		GO_OPTS=$$GO_OPTS"--go_opt=M$$file=$(YANET2_COMMON_MODULE) "; \
 		GRPC_OPTS=$$GRPC_OPTS"--go-grpc_opt=M$$file=$(YANET2_COMMON_MODULE) "; \
 	done; \
-	FILES=$$(realpath --relative-to=$(YANET2_DIR) $(YANET2_DIR)/$(YANET2_BALANCER_PROTO_DIR)/*.proto); \
-	for file in $$FILES; do \
+	for file in $(YANET2_DIR)/$(YANET2_BALANCER_PROTO_DIR)/*.proto; do \
+		file=$${file#$(YANET2_DIR)/}; \
 		GO_OPTS=$$GO_OPTS"--go_opt=M$$file=$(YANET2_BALANCER_MODULE) "; \
 		GRPC_OPTS=$$GRPC_OPTS"--go-grpc_opt=M$$file=$(YANET2_BALANCER_MODULE) "; \
 	done; \
@@ -102,18 +101,21 @@ generate-yanet2: $(YANET2_DIR)
 		$$(ls -1 $(YANET2_DIR)/$(YANET2_COMMON_PROTO_DIR)/*.proto $(YANET2_DIR)/$(YANET2_BALANCER_PROTO_DIR)/*.proto)
 	@echo "✅ YANET2 balancer .proto files generated"
 
-# Generate all protobuf files
-generate: generate-local generate-yanet generate-yanet2
+# Generate all Go protobuf bindings, including the external backend APIs.
+proto-go: generate-local generate-yanet generate-yanet2
+
+# Backwards-compatible entry point for existing build scripts.
+generate: proto-go
 
 # Clean generated files
 clean:
-	@rm -rf $(MANAGER_OUT_DIR) $(GOOGLE_API_DIR) $(YANET_DIR) $(YANET_OUT_DIR) $(YANET2_OUT_DIR)
+	@rm -f $(MANAGER_GENERATED_FILES)
 	@rm -rf ./gen
 	@rm -rf ./third_party
 	@echo "🗑️  Cleanup completed"
 
 # Build the Go application
-build: generate
+build: proto-go
 	@GOOS=linux GOARCH=amd64 go build -o monalive ./cmd/monalive
 	@echo "🚀 Build completed: ./monalive"
 
@@ -128,4 +130,4 @@ install-tools:
 # Full setup: install dependencies, generate code, and build the application
 setup: install-tools generate build
 
-.PHONY: all generate generate-local generate-yanet generate-yanet2 clean build install-tools setup
+.PHONY: all proto-go generate generate-local generate-yanet generate-yanet2 clean build install-tools setup

@@ -84,7 +84,7 @@ jobs:
           go mod verify
 
       - name: Generate protobuf code
-        run: make generate
+        run: make proto-go
 
       - name: Build for Linux
         run: go build -mod=readonly -o monalive ./cmd/monalive

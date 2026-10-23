@@ -14,7 +14,7 @@ import (
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/protobuf/encoding/protojson"
 
-	monalivepb "github.com/yanet-platform/monalive/gen/manager"
+	monalivepb "github.com/yanet-platform/monalive/monalivepb/v1"
 	"github.com/yanet-platform/monalive/internal/monitoring/metrics"
 	"github.com/yanet-platform/monalive/internal/utils/runtimemetrics"
 )
