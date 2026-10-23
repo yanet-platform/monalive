@@ -27,8 +27,8 @@ func (m *Real) Status() *monalivepb.RealStatus {
 
 	// Construct real status based on it's state and checkers status slice.
 	return &monalivepb.RealStatus{
-		Ip:          m.config.IP.String(),
-		Port:        m.config.Port.ProtoMarshaller(),
+		Ip:          m.key.Addr.String(),
+		Port:        m.key.Port.ProtoMarshaller(),
 		Alive:       alive,
 		Weight:      state.Weight.Uint32(),
 		Transitions: uint32(state.Transitions),
