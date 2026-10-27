@@ -27,6 +27,12 @@ type Core struct {
 	servicesMu   sync.Mutex                       // to protect concurent access to the services map
 	servicesPool *workerpool.Pool
 
+	lifeMu   sync.Mutex
+	started  bool
+	cancel   context.CancelFunc
+	done     chan struct{}
+	stopOnce sync.Once
+
 	metrics *Metrics
 
 	shutdown *shutdown.Shutdown
@@ -45,19 +51,50 @@ func New(announcer *announcer.Announcer, balancer *balancer.Balancer, metrics *m
 		metrics: NewMetrics(metrics),
 
 		shutdown: shutdown.New(),
+		done:     make(chan struct{}),
 		log:      logger,
 	}
 }
 
 // Run starts the Core service.
 //
-// It runs the core's worker pool. The core will continue running until its Stop
-// method is invoked.
+// It runs the core's worker pool until ctx is canceled or Stop is invoked, then
+// joins services and the pool before returning.
 func (m *Core) Run(ctx context.Context) {
+	m.lifeMu.Lock()
+	select {
+	case <-m.shutdown.Done():
+		m.lifeMu.Unlock()
+		<-m.done
+		return
+	default:
+	}
+	if m.started {
+		m.lifeMu.Unlock()
+		<-m.done
+		return
+	}
+
+	m.started = true
+	ctx, m.cancel = context.WithCancel(ctx)
+	m.lifeMu.Unlock()
+	defer func() {
+		m.stopOnce.Do(m.finish)
+		close(m.done)
+	}()
+
 	m.log.Info("running core")
 	defer m.log.Info("core stopped")
 
-	m.servicesPool.Run(ctx)
+	poolDone := make(chan struct{})
+	go func() {
+		m.servicesPool.Run(ctx)
+		close(poolDone)
+	}()
+
+	<-ctx.Done()
+	m.stopOnce.Do(m.finish)
+	<-poolDone
 }
 
 // Reload updates the Core with a new configuration.
@@ -75,6 +112,12 @@ func (m *Core) Reload(config *Config) error {
 	// Lock the services mutex to ensure thread-safe access.
 	m.servicesMu.Lock()
 	defer m.servicesMu.Unlock()
+
+	select {
+	case <-m.shutdown.Done():
+		return nil
+	default:
+	}
 
 	// It is crutial to update the announcer first, as it will immediately
 	// remove announces of the deleted services.
@@ -164,8 +207,31 @@ func (m *Core) Reload(config *Config) error {
 // stopped. It uses the shutdown mechanism to signal that the Core should no
 // longer accept new tasks and performs cleanup for all services.
 func (m *Core) Stop() {
-	// Trigger the shutdown signal to gracefully stop workers.
+	m.lifeMu.Lock()
 	m.shutdown.Do()
+	if m.cancel != nil {
+		m.cancel()
+	}
+	started := m.started
+	m.lifeMu.Unlock()
+
+	if !started {
+		m.stopOnce.Do(func() {
+			m.finish()
+			close(m.done)
+		})
+	}
+
+	<-m.done
+}
+
+func (m *Core) finish() {
+	m.lifeMu.Lock()
+	m.shutdown.Do()
+	if m.cancel != nil {
+		m.cancel()
+	}
+	m.lifeMu.Unlock()
 
 	// Lock the services mutex to ensure thread-safe access.
 	m.servicesMu.Lock()

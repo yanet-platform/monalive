@@ -11,9 +11,14 @@ import (
 
 // HandleEvent handles an event sent from the checker.
 func (m *Real) HandleEvent(event *xevent.Event) {
-	// Increment the wait group counter for event processing.
-	// Real won't be stopped until the wait group counter is zero.
+	m.eventsMu.Lock()
+	if m.eventsClosed {
+		m.eventsMu.Unlock()
+		return
+	}
+
 	m.eventsWG.Add(1)
+	m.eventsMu.Unlock()
 	defer m.eventsWG.Done()
 
 	// Assign the current real's key to the event for tracking.

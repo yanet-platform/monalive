@@ -38,8 +38,16 @@ type Checker struct {
 	state   State        // current state of the checker
 	stateMu sync.RWMutex // to protect concurent access to the state
 
-	handler  xevent.Handler // callback event handler function provided by the parent real
-	eventsWG sync.WaitGroup // to manage goroutines handling events
+	handler      xevent.Handler // callback event handler function provided by the parent real
+	eventsWG     sync.WaitGroup // to manage goroutines handling events
+	eventsMu     sync.Mutex
+	eventsClosed bool
+
+	lifeMu   sync.Mutex
+	started  bool
+	cancel   context.CancelFunc
+	done     chan struct{}
+	stopOnce sync.Once
 
 	metrics *Metrics
 
@@ -66,6 +74,7 @@ func New(config *Config, handler xevent.Handler, weight weight.Weight, forwardin
 		handler:  handler,
 		metrics:  NewMetrics(),
 		shutdown: shutdown.New(),
+		done:     make(chan struct{}),
 	}
 
 	checker.state.Weight = weight
@@ -117,6 +126,25 @@ func New(config *Config, handler xevent.Handler, weight weight.Weight, forwardin
 // It then continues running the checks at intervals defined by the
 // configuration until stopped.
 func (m *Checker) Run(ctx context.Context) {
+	m.lifeMu.Lock()
+	select {
+	case <-m.shutdown.Done():
+		m.lifeMu.Unlock()
+		<-m.done
+		return
+	default:
+	}
+	if m.started {
+		m.lifeMu.Unlock()
+		<-m.done
+		return
+	}
+
+	m.started = true
+	ctx, m.cancel = context.WithCancel(ctx)
+	m.lifeMu.Unlock()
+	defer m.stopOnce.Do(m.finish)
+
 	scheduler := scheduler.New(
 		m.config.Scheduler.GetRetries(),
 		m.config.Scheduler.GetRetryDelay(),
@@ -133,34 +161,11 @@ func (m *Checker) Run(ctx context.Context) {
 	// Blocks access to the metrics after launching cheker.
 	m.metrics.Block()
 
-	// Preventively increment the event counter so that checker's Stop function
-	// doesn't complete until the shutdown event is handled properly.
-	m.eventsWG.Add(1)
-
 	// Generate the shutdown event when the function returns.
 	defer func() {
-		defer m.eventsWG.Done()
-
 		md := check.Metadata{}
 		md.SetInactive()
 		m.ProcessCheck(md, ErrShutdown)
-	}()
-
-	// Create a child context for this checker that can be canceled
-	// independently of the parent context.
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	// A goroutine is launched to handle shutdown signals.
-	go func() {
-		select {
-		case <-ctx.Done():
-			// Stop the checker if the parent context is canceled.
-			m.Stop()
-		case <-m.shutdown.Done():
-			// Cancel the child context if a shutdown is signaled.
-			cancel()
-		}
 	}()
 
 	// Continuously execute checks at intervals specified by the configuration.
@@ -190,10 +195,37 @@ func (m *Checker) Run(ctx context.Context) {
 // Stop stops the checker gracefully, waiting for any ongoing checks to
 // complete.
 func (m *Checker) Stop() {
-	// Trigger the shutdown signal to gracefully stop worker.
+	m.lifeMu.Lock()
 	m.shutdown.Do()
-	// Wait for all checks to finish.
+	if m.cancel != nil {
+		m.cancel()
+	}
+	started := m.started
+	m.lifeMu.Unlock()
+
+	if !started {
+		m.stopOnce.Do(m.finish)
+	}
+
+	<-m.done
+}
+
+func (m *Checker) finish() {
+	m.lifeMu.Lock()
+	m.shutdown.Do()
+	if m.cancel != nil {
+		m.cancel()
+	}
+	m.lifeMu.Unlock()
+
+	// Run's final shutdown event has already been delivered. Only now close
+	// direct ProcessCheck admission, then join everything admitted before it.
+	m.eventsMu.Lock()
+	m.eventsClosed = true
+	m.eventsMu.Unlock()
+
 	m.eventsWG.Wait()
+	close(m.done)
 }
 
 func (m *Checker) UpdateWeight(weight weight.Weight) {
