@@ -1,45 +1,66 @@
 package checker
 
 import (
-	"google.golang.org/protobuf/types/known/durationpb"
-	"google.golang.org/protobuf/types/known/timestamppb"
+	"net/netip"
+	"time"
 
-	monalivepb "github.com/yanet-platform/monalive/monalivepb/v1"
+	"github.com/yanet-platform/monalive/pkg/optport"
 )
 
-// Status returns [monalivepb.CheckerStatus] messages representing the status of
-// the checker.
-func (m *Checker) Status() *monalivepb.CheckerStatus {
+// Status is a snapshot of a checker configuration and current state.
+type Status struct {
+	Type                string
+	ConnectIP           netip.Addr
+	ConnectPort         optport.Port
+	BindIP              netip.Addr
+	ConnectTimeout      time.Duration
+	CheckTimeout        time.Duration
+	FWMark              int
+	Path                string
+	StatusCode          int
+	Digest              string
+	Virtualhost         *string
+	DynamicWeight       bool
+	DynamicWeightHeader bool
+	DynamicWeightCoeff  uint
+	DelayLoop           time.Duration
+	Retries             int
+	RetryDelay          time.Duration
+	Alive               bool
+	FailedAttempts      int
+	LastCheckTS         time.Time
+}
+
+// Status retrieves the current checker snapshot, owning its optional values.
+func (m *Checker) Status() Status {
 	state := m.State()
-	alive := uint32(0)
-	if state.Alive {
-		alive = 1
+
+	var virtualhost *string
+	if m.config.Virtualhost != nil {
+		value := *m.config.Virtualhost
+		virtualhost = &value
 	}
-	return &monalivepb.CheckerStatus{
-		Type: m.config.Type.String(),
 
-		ConnectIp:      m.config.ConnectIP.String(),
-		ConnectPort:    m.config.ConnectPort.ProtoMarshaller(),
-		BindIp:         m.config.BindIP.String(),
-		ConnectTimeout: durationpb.New(m.config.GetConnectTimeout()),
-		CheckTimeout:   durationpb.New(m.config.GetCheckTimeout()),
-		Fwmark:         uint32(m.config.FWMark),
-
-		Path:        m.config.Path,
-		StatusCode:  int32(m.config.StatusCode),
-		Digest:      m.config.Digest,
-		Virtualhost: m.config.Virtualhost,
-
+	return Status{
+		Type:                m.config.Type.String(),
+		ConnectIP:           m.config.ConnectIP,
+		ConnectPort:         m.config.ConnectPort,
+		BindIP:              m.config.BindIP,
+		ConnectTimeout:      m.config.GetConnectTimeout(),
+		CheckTimeout:        m.config.GetCheckTimeout(),
+		FWMark:              m.config.FWMark,
+		Path:                m.config.Path,
+		StatusCode:          m.config.StatusCode,
+		Digest:              m.config.Digest,
+		Virtualhost:         virtualhost,
 		DynamicWeight:       m.config.DynamicWeight,
 		DynamicWeightHeader: m.config.DynamicWeightHeader,
-		DynamicWeightCoeff:  uint32(m.config.DynamicWeightCoeff),
-
-		DelayLoop:  durationpb.New(m.config.GetDelayLoop()),
-		Retries:    uint32(m.config.GetRetries()),
-		RetryDelay: durationpb.New(m.config.GetRetryDelay()),
-
-		Alive:          alive,
-		FailedAttempts: uint32(state.FailedAttempts),
-		LastCheckTs:    timestamppb.New(state.Timestamp),
+		DynamicWeightCoeff:  m.config.DynamicWeightCoeff,
+		DelayLoop:           m.config.GetDelayLoop(),
+		Retries:             m.config.GetRetries(),
+		RetryDelay:          m.config.GetRetryDelay(),
+		Alive:               state.Alive,
+		FailedAttempts:      state.FailedAttempts,
+		LastCheckTS:         state.Timestamp,
 	}
 }

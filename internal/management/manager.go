@@ -1,4 +1,4 @@
-package core
+package management
 
 import (
 	"context"
@@ -10,6 +10,7 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/yanet-platform/monalive/internal/core"
 	"github.com/yanet-platform/monalive/internal/monitoring/metrics"
 	"github.com/yanet-platform/monalive/internal/types/requestid"
 	monalivepb "github.com/yanet-platform/monalive/monalivepb/v1"
@@ -21,7 +22,7 @@ import (
 // saved.
 type ServicesConfig struct {
 	// Format of the services configuration file.
-	Format ConfigFormat `yaml:"format"`
+	Format core.ConfigFormat `yaml:"format"`
 	// Path to the services configuration file.
 	Path string `yaml:"path"`
 	// Path where the dumped configuration will be saved.
@@ -39,29 +40,29 @@ type ManagerConfig struct {
 // It handles configuration loading, reloading, and status retrieval.
 type Manager struct {
 	config   *ManagerConfig
-	core     *Core        // core instance that managing all health checking logic
-	loader   ConfigLoader // this function is used to load the services configuration
-	updateTS time.Time    // last configuration update timestamp
+	core     *core.Core        // core instance that managing all health checking logic
+	loader   core.ConfigLoader // this function is used to load the services configuration
+	updateTS time.Time         // last configuration update timestamp
 	metrics  metrics.Provider
 	logger   *log.Logger
 }
 
 // NewManager creates a new Manager instance. It selects the appropriate
 // configuration loader based on the format specified in the config.
-func NewManager(config *ManagerConfig, core *Core, metrics metrics.Provider, logger *log.Logger) (*Manager, error) {
-	var loader ConfigLoader
+func NewManager(config *ManagerConfig, coreService *core.Core, metrics metrics.Provider, logger *log.Logger) (*Manager, error) {
+	var loader core.ConfigLoader
 	switch format := config.Services.Format; format {
-	case KeepalivedFormat:
-		loader = KeepalivedConfigLoader
-	case JSONFormat:
-		loader = JSONConfigLoader
+	case core.KeepalivedFormat:
+		loader = core.KeepalivedConfigLoader
+	case core.JSONFormat:
+		loader = core.JSONConfigLoader
 	default:
 		return nil, fmt.Errorf("unknown services configuration format: %s", format)
 	}
 
 	return &Manager{
 		config:  config,
-		core:    core,
+		core:    coreService,
 		loader:  loader,
 		metrics: metrics,
 		logger:  logger,
@@ -111,13 +112,13 @@ func (m *Manager) GetStatus(ctx context.Context, _ *monalivepb.GetStatusRequest)
 	defer m.logger.Info("retrieve services status finished")
 	return &monalivepb.GetStatusResponse{
 		UpdateTimestamp: timestamppb.New(m.updateTS),
-		Status:          m.core.Status(),
+		Status:          ServiceStatuses(m.core.Status()),
 	}, nil
 }
 
 // loadConfig loads the configuration from the specified path using the selected loader function.
 // It returns the loaded Config instance or an error if loading fails.
-func (m *Manager) loadConfig() (*Config, error) {
+func (m *Manager) loadConfig() (*core.Config, error) {
 	coreConfig, err := m.loader(m.config.Services.Path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load services config [format: %s]: %w", m.config.Services.Format, err)

@@ -11,7 +11,7 @@ import (
 	"github.com/yanet-platform/monalive/internal/balancer"
 	"github.com/yanet-platform/monalive/internal/balancer/yanet"
 	"github.com/yanet-platform/monalive/internal/balancer/yanet2"
-	"github.com/yanet-platform/monalive/internal/core"
+	"github.com/yanet-platform/monalive/internal/management"
 	"github.com/yanet-platform/monalive/internal/monitoring/logger"
 	"github.com/yanet-platform/monalive/internal/monitoring/metrics"
 	"github.com/yanet-platform/monalive/internal/server"
@@ -30,10 +30,10 @@ type Config struct {
 	Announcer *announcer.Config `yaml:"announcer"`
 	Bird      *bird.Config      `yaml:"bird"`
 
-	TLSMinVersion string              `yaml:"tls_min_version"`
-	Service       *core.ManagerConfig `yaml:"service"`
-	Server        *server.Config      `yaml:"server"`
-	Tunnel        checktun.Config     `yaml:"check_tun"`
+	TLSMinVersion string                    `yaml:"tls_min_version"`
+	Service       *management.ManagerConfig `yaml:"service"`
+	Server        *server.Config            `yaml:"server"`
+	Tunnel        checktun.Config           `yaml:"check_tun"`
 
 	Experiments exp.Config `yaml:"experiments"`
 }

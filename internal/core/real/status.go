@@ -1,37 +1,41 @@
 package real
 
 import (
-	monalivepb "github.com/yanet-platform/monalive/monalivepb/v1"
+	"net/netip"
+
+	"github.com/yanet-platform/monalive/internal/core/checker"
+	"github.com/yanet-platform/monalive/pkg/optport"
+	"github.com/yanet-platform/monalive/pkg/weight"
 )
 
-// Status retrieves the current status of all checkers managed by this real. It
-// returns [monalivepb.RealStatus] messages representing the status of the real
-// and its checkers.
-func (m *Real) Status() *monalivepb.RealStatus {
-	// Lock the reals mutex to ensure thread-safe access.
+// Status is a snapshot of a real and its checkers.
+type Status struct {
+	IP          netip.Addr
+	Port        optport.Port
+	Alive       bool
+	Weight      weight.Weight
+	Transitions int
+	Checkers    []checker.Status
+}
+
+// Status retrieves the current real state and its checker snapshots.
+func (m *Real) Status() Status {
 	m.checkersMu.Lock()
 	defer m.checkersMu.Unlock()
 
 	state := m.State()
-	alive := uint32(0)
-	if state.Alive {
-		alive = 1
-	}
 
-	// Create a slice to hold the statuses of real's checkers.
-	checkerStatus := make([]*monalivepb.CheckerStatus, 0, len(m.checkers))
-	// Iterate over each checker and append it's status to the slice.
+	checkers := make([]checker.Status, 0, len(m.checkers))
 	for _, checker := range m.checkers {
-		checkerStatus = append(checkerStatus, checker.Status())
+		checkers = append(checkers, checker.Status())
 	}
 
-	// Construct real status based on it's state and checkers status slice.
-	return &monalivepb.RealStatus{
-		Ip:          m.key.Addr.String(),
-		Port:        m.key.Port.ProtoMarshaller(),
-		Alive:       alive,
-		Weight:      state.Weight.Uint32(),
-		Transitions: uint32(state.Transitions),
-		Checkers:    checkerStatus,
+	return Status{
+		IP:          m.key.Addr,
+		Port:        m.key.Port,
+		Alive:       state.Alive,
+		Weight:      state.Weight,
+		Transitions: state.Transitions,
+		Checkers:    checkers,
 	}
 }

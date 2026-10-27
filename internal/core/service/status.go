@@ -1,47 +1,57 @@
 package service
 
 import (
-	monalivepb "github.com/yanet-platform/monalive/monalivepb/v1"
+	"net/netip"
+
+	"github.com/yanet-platform/monalive/internal/core/real"
+	"github.com/yanet-platform/monalive/pkg/optport"
+	"github.com/yanet-platform/monalive/pkg/weight"
 )
 
-// Status retrieves the current status of all reals managed by this service. It
-// returns [monalivepb.ServiceStatus] messages representing the status of the
-// service and its reals.
-func (m *Service) Status() *monalivepb.ServiceStatus {
-	// Lock the reals mutex to ensure thread-safe access.
+// Status is a snapshot of a service and its reals.
+type Status struct {
+	VIP                    netip.Addr
+	Port                   optport.Port
+	Protocol               string
+	LVSMethod              string
+	QuorumState            bool
+	AliveWeight            weight.Weight
+	AliveCount             int
+	Transitions            int
+	FWMark                 int
+	AnnounceGroup          string
+	IPv4OuterSourceNetwork string
+	IPv6OuterSourceNetwork string
+	Reals                  []real.Status
+	QuorumUp               string
+}
+
+// Status retrieves the current service state and its real snapshots.
+func (m *Service) Status() Status {
 	m.realsMu.Lock()
 	defer m.realsMu.Unlock()
 
 	state := m.State()
-	alive := uint32(0)
-	if state.Alive {
-		alive = 1
-	}
 
-	// Create a slice to hold the statuses of service's reals.
-	realStatus := make([]*monalivepb.RealStatus, 0, len(m.reals))
-	// Iterate over each real and append it's status to the slice.
+	reals := make([]real.Status, 0, len(m.reals))
 	for _, real := range m.reals {
-		realStatus = append(realStatus, real.Status())
+		reals = append(reals, real.Status())
 	}
 
-	// Construct service status based on it's state and reals status slice.
-	return &monalivepb.ServiceStatus{
-		Vip:                    m.config.VIP.String(),
-		Port:                   m.config.VPort.ProtoMarshaller(),
+	return Status{
+		VIP:                    m.config.VIP,
+		Port:                   m.config.VPort,
 		Protocol:               m.config.Protocol,
-		LvsMethod:              m.config.ForwardingMethod,
-		QuorumState:            alive,
-		AliveWeight:            state.Weight.Uint32(),
-		AliveCount:             uint32(state.RealsAlive),
-		Transitions:            uint32(state.Transitions),
-		Fwmark:                 uint32(m.config.FwMark),
-		AnnounceGroup:          &m.config.AnnounceGroup,
-		Ipv4OuterSourceNetwork: m.config.IPv4OuterSourceNetwork,
-		Ipv6OuterSourceNetwork: m.config.IPv6OuterSourceNetwork,
-		Rs:                     realStatus,
-
-		// TODO: REMOVE
-		QuorumUp: m.config.QuorumUp,
+		LVSMethod:              m.config.ForwardingMethod,
+		QuorumState:            state.Alive,
+		AliveWeight:            state.Weight,
+		AliveCount:             state.RealsAlive,
+		Transitions:            state.Transitions,
+		FWMark:                 m.config.FwMark,
+		AnnounceGroup:          m.config.AnnounceGroup,
+		IPv4OuterSourceNetwork: m.config.IPv4OuterSourceNetwork,
+		IPv6OuterSourceNetwork: m.config.IPv6OuterSourceNetwork,
+		Reals:                  reals,
+		QuorumUp:               m.config.QuorumUp,
 	}
 }
