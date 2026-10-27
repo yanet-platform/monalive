@@ -40,8 +40,16 @@ type Real struct {
 	state   State        // current state of the real
 	stateMu sync.RWMutex // to protect concurrent access to the state and config
 
-	handler  xevent.Handler // callback event handler function provided by the parent service
-	eventsWG sync.WaitGroup // to manage goroutines handling events
+	handler      xevent.Handler // callback event handler function provided by the parent service
+	eventsWG     sync.WaitGroup // to manage goroutines handling events
+	eventsMu     sync.Mutex
+	eventsClosed bool
+
+	lifeMu   sync.Mutex
+	started  bool
+	cancel   context.CancelFunc
+	done     chan struct{}
+	stopOnce sync.Once
 
 	metrics *Metrics
 
@@ -119,6 +127,7 @@ func New(config *Config, handler xevent.Handler, logger *log.Logger, opts ...Opt
 		metrics:      NewMetrics(),
 		state:        State{TransitionTimestamp: time.Now()},
 		shutdown:     shutdown.New(),
+		done:         make(chan struct{}),
 		log:          logger,
 	}
 
@@ -133,10 +142,33 @@ func New(config *Config, handler xevent.Handler, logger *log.Logger, opts ...Opt
 // Run starts the real.
 //
 // It runs the real's worker pool, waiting the real activation before launching
-// it. The real will continue running until its Stop method is invoked.
+// it. Cancellation or Stop joins activation, checkers and final callbacks before
+// Run returns.
 func (m *Real) Run(ctx context.Context) {
+	m.lifeMu.Lock()
+	select {
+	case <-m.shutdown.Done():
+		m.lifeMu.Unlock()
+		<-m.done
+		return
+	default:
+	}
+	if m.started {
+		m.lifeMu.Unlock()
+		<-m.done
+		return
+	}
+
+	m.started = true
+	ctx, m.cancel = context.WithCancel(ctx)
+	m.lifeMu.Unlock()
+	defer func() {
+		m.stopOnce.Do(m.finish)
+		close(m.done)
+	}()
+
 	// Wait for the real activation before launching its checkers.
-	if activated := m.waitActivation(); !activated {
+	if activated := m.waitActivation(ctx); !activated || ctx.Err() != nil {
 		// If the activation function signals a non-activated status, return
 		// early.
 		return
@@ -148,17 +180,22 @@ func (m *Real) Run(ctx context.Context) {
 	// Blocks access to the metrics after launching real.
 	m.metrics.Block()
 
-	// Reload to apply initial checkers configuration.
+	// Install synchronously before starting staged checkers. Reload and Stop
+	// serialize installation, but callbacks never acquire reloadMu.
+	m.reloadMu.Lock()
+	m.isActive = true
+	m.reload(m.config)
+	m.reloadMu.Unlock()
+
+	poolDone := make(chan struct{})
 	go func() {
-		m.reloadMu.Lock()
-		defer m.reloadMu.Unlock()
-		// Mark the real as active and perform initial reload.
-		m.isActive = true
-		m.reload(m.config)
+		m.checkersPool.Run(ctx)
+		close(poolDone)
 	}()
 
-	// Run the real's worker pool.
-	m.checkersPool.Run(ctx)
+	<-ctx.Done()
+	m.stopOnce.Do(m.finish)
+	<-poolDone
 }
 
 // Reload updates the configuration of the real service, stopping outdated
@@ -166,6 +203,12 @@ func (m *Real) Run(ctx context.Context) {
 func (m *Real) Reload(config *Config) {
 	m.reloadMu.Lock()
 	defer m.reloadMu.Unlock()
+
+	select {
+	case <-m.shutdown.Done():
+		return
+	default:
+	}
 
 	if !m.isActive {
 		// If the real is not active yet, save the new config and return early.
@@ -181,22 +224,55 @@ func (m *Real) Reload(config *Config) {
 // Stop gracefully stops the real service, ensuring all checkers and event
 // handling are properly terminated.
 func (m *Real) Stop() {
-	// Trigger the shutdown signal to gracefully stop workers.
+	m.lifeMu.Lock()
 	m.shutdown.Do()
+	if m.cancel != nil {
+		m.cancel()
+	}
+	started := m.started
+	m.lifeMu.Unlock()
 
-	// Lock the checkers mutex to ensure thread-safe access.
+	if !started {
+		m.stopOnce.Do(func() {
+			m.finish()
+			close(m.done)
+		})
+	}
+
+	<-m.done
+}
+
+func (m *Real) finish() {
+	m.lifeMu.Lock()
+	m.shutdown.Do()
+	if m.cancel != nil {
+		m.cancel()
+	}
+	m.lifeMu.Unlock()
+
+	m.reloadMu.Lock()
+	defer m.reloadMu.Unlock()
+
+	// Callbacks need stateMu, not the child-map/reload locks. Do not hold a
+	// state lock while stopping checkers or waiting for their callbacks.
 	m.checkersMu.Lock()
-	defer m.checkersMu.Unlock()
-	// Gracefully stop all checkers.
-	for _, checker := range m.checkers {
+	checkers := make([]*checker.Checker, 0, len(m.checkers))
+	for _, child := range m.checkers {
+		checkers = append(checkers, child)
+	}
+	m.checkersMu.Unlock()
+
+	for _, checker := range checkers {
 		checker.Stop()
 	}
 
-	// Wait for all event handling goroutines to finish.
-	m.eventsWG.Wait()
-
-	// Close the worker pool.
 	m.checkersPool.Close()
+
+	m.eventsMu.Lock()
+	m.eventsClosed = true
+	m.eventsMu.Unlock()
+
+	m.eventsWG.Wait()
 }
 
 // Key returns the unique key associated with the real.
@@ -218,6 +294,11 @@ func (m *Real) SetMetrics(setMetricFunc ...SetMetricFunc) {
 }
 
 func (m *Real) reload(config *Config) {
+	// checkersMu protects the entire map installation, including deletions.
+	// Checker callbacks do not acquire it.
+	m.checkersMu.Lock()
+	defer m.checkersMu.Unlock()
+
 	// Track if any checker supports dynamic weight.
 	dynamicWeight := false
 
@@ -318,39 +399,17 @@ func (m *Real) reload(config *Config) {
 	}
 
 	// Save the updated set of checkers.
-	m.checkersMu.Lock()
-	defer m.checkersMu.Unlock()
 	m.checkers = newCheckers
 }
 
 // waitActivation blocks execution until the activation function returns, if it
 // has been set.
-func (m *Real) waitActivation() (activated bool) {
+func (m *Real) waitActivation(ctx context.Context) (activated bool) {
 	if m.activationFunc == nil {
 		// If the activation function is not set, return early with an activated
 		// status.
 		return true
 	}
-
-	// Create a context with a cancel function to allow activationFunc to
-	// properly stop its execution if the real shutdown occurs early.
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	// Start a goroutine to listen for either context cancellation or shutdown
-	// signal.
-	go func() {
-		select {
-		case <-ctx.Done():
-			// Simply return because the activation function is expected to be
-			// canceled when the provided context is canceled.
-			return
-		case <-m.shutdown.Done():
-			// Cancel the activationFunc context if a shutdown is triggered to
-			// avoid resource leaks.
-			cancel()
-		}
-	}()
 
 	// Call the activation function with the provided context.
 	return m.activationFunc(ctx)

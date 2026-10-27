@@ -36,7 +36,15 @@ type Service struct {
 	state   State        // current state of the service
 	stateMu sync.RWMutex // to protect concurent access to the state
 
-	eventsWG sync.WaitGroup // to manage goroutines handling events
+	eventsWG     sync.WaitGroup // to manage goroutines handling events
+	eventsMu     sync.Mutex
+	eventsClosed bool
+
+	lifeMu   sync.Mutex
+	started  bool
+	cancel   context.CancelFunc
+	done     chan struct{}
+	stopOnce sync.Once
 
 	metrics *Metrics
 
@@ -76,6 +84,7 @@ func New(config *Config, announcer *announcer.Announcer, balancer *balancer.Bala
 		state:   State{TransitionTimestamp: time.Now()},
 
 		shutdown: shutdown.New(),
+		done:     make(chan struct{}),
 		log:      logger,
 	}
 }
@@ -83,20 +92,52 @@ func New(config *Config, announcer *announcer.Announcer, balancer *balancer.Bala
 // Run starts the service.
 //
 // It runs the service's worker pool and performs a reload to apply the
-// initial configuration for the reals. The service will continue running until
-// its Stop method is invoked.
+// initial configuration for the reals. Cancellation or Stop joins all reals and
+// their final callbacks before Run returns.
 func (m *Service) Run(ctx context.Context) {
+	m.lifeMu.Lock()
+	select {
+	case <-m.shutdown.Done():
+		m.lifeMu.Unlock()
+		<-m.done
+		return
+	default:
+	}
+	if m.started {
+		m.lifeMu.Unlock()
+		<-m.done
+		return
+	}
+
+	m.started = true
+	ctx, m.cancel = context.WithCancel(ctx)
+	m.lifeMu.Unlock()
+	defer func() {
+		m.stopOnce.Do(m.finish)
+		close(m.done)
+	}()
+
 	m.log.Info("running service", log.String("event_type", "service update"))
 	defer m.log.Info("service stopped", log.String("event_type", "service update"))
 
 	// Blocks access to the metrics after launching service.
 	m.metrics.Block()
 
-	// Reload to apply initial reals configuration.
-	go m.Reload(m.config)
+	// Staged Add permits installation before the pool starts. Serialize the
+	// initial config read with Reload, rather than launching detached reloads.
+	m.realsMu.Lock()
+	m.reload(m.config)
+	m.realsMu.Unlock()
 
-	// Run the service's worker pool.
-	m.realsPool.Run(ctx)
+	poolDone := make(chan struct{})
+	go func() {
+		m.realsPool.Run(ctx)
+		close(poolDone)
+	}()
+
+	<-ctx.Done()
+	m.stopOnce.Do(m.finish)
+	<-poolDone
 }
 
 // Reload updates the service with a new configuration.
@@ -108,6 +149,16 @@ func (m *Service) Reload(config *Config) {
 	// Lock the reals mutex to ensure thread-safe access.
 	m.realsMu.Lock()
 	defer m.realsMu.Unlock()
+
+	m.reload(config)
+}
+
+func (m *Service) reload(config *Config) {
+	select {
+	case <-m.shutdown.Done():
+		return
+	default:
+	}
 
 	// Convert the keepalived reals configuration to the internal
 	// representation.
@@ -182,19 +233,44 @@ func (m *Service) Reload(config *Config) {
 	// Finally, replace the old reals map with the new one that contains the
 	// updated set of reals and update service config.
 	m.reals = newReals
+	m.stateMu.Lock()
 	forceAnnounce := m.config.AnnounceGroup == "" && config.AnnounceGroup != ""
 	m.config = config
 
 	// It is neccesary to process the status of the service announce after
 	// reload due to possible changes in the announce settings.
 	m.processAnnounce(forceAnnounce)
+	m.stateMu.Unlock()
 }
 
 // Stop gracefully shuts down the service, stopping all associated reals and
 // waiting for any ongoing event handling to complete before returning.
 func (m *Service) Stop() {
-	// Trigger the shutdown signal to gracefully stop workers.
+	m.lifeMu.Lock()
 	m.shutdown.Do()
+	if m.cancel != nil {
+		m.cancel()
+	}
+	started := m.started
+	m.lifeMu.Unlock()
+
+	if !started {
+		m.stopOnce.Do(func() {
+			m.finish()
+			close(m.done)
+		})
+	}
+
+	<-m.done
+}
+
+func (m *Service) finish() {
+	m.lifeMu.Lock()
+	m.shutdown.Do()
+	if m.cancel != nil {
+		m.cancel()
+	}
+	m.lifeMu.Unlock()
 
 	// Lock the reals mutex to ensure thread-safe access.
 	m.realsMu.Lock()
@@ -204,11 +280,15 @@ func (m *Service) Stop() {
 		real.Stop()
 	}
 
-	// Wait for all event handling goroutines to finish.
-	m.eventsWG.Wait()
-
-	// Close the worker pool.
 	m.realsPool.Close()
+
+	// Children (including final shutdown callbacks) are joined before handler
+	// admission closes. No Wait runs under a lock needed by those callbacks.
+	m.eventsMu.Lock()
+	m.eventsClosed = true
+	m.eventsMu.Unlock()
+
+	m.eventsWG.Wait()
 }
 
 // State returns a snapshot of the current service state.
@@ -240,6 +320,14 @@ func (m *Service) realActivationFunc(real key.Real) real.ActivationFunc {
 			// return true.
 			return true
 		}
+
+		// LookupSubscription owns a helper that closes the channel on exit.
+		// Drain through closure on every path so activation returns only after
+		// that session-bound helper is joined.
+		defer func() {
+			for range subscription {
+			}
+		}()
 
 		select {
 		case <-ctx.Done():

@@ -15,9 +15,14 @@ import (
 // ProcessCheck processes the results of a health check, updating the internal
 // state and generating events based on whether the check succeeded or failed.
 func (m *Checker) ProcessCheck(md check.Metadata, opErr error) {
-	// Increment the wait group counter for event processing.
-	// Checker won't be stopped until the wait group counter is zero.
+	m.eventsMu.Lock()
+	if m.eventsClosed {
+		m.eventsMu.Unlock()
+		return
+	}
+
 	m.eventsWG.Add(1)
+	m.eventsMu.Unlock()
 	defer m.eventsWG.Done()
 
 	switch md.Alive {

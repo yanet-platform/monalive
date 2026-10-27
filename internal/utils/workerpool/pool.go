@@ -1,5 +1,4 @@
-// Package workerpool provides a worker pool implementation that allows tasks to
-// be processed concurrently.
+// Package workerpool manages workers whose cancellation belongs to their owner.
 package workerpool
 
 import (
@@ -7,69 +6,82 @@ import (
 	"sync"
 )
 
-// Worker is an interface that represents a task to be executed by a worker in
-// the pool.
 type Worker interface {
-	Run(ctx context.Context)
+	Run(context.Context)
 }
 
-// Pool represents a pool of workers that can execute tasks concurrently.
+// Pool stages workers before Run and joins admitted workers on Close.
 type Pool struct {
-	worker   chan Worker    // channel through which workers are sent to be processed
-	workerMu sync.RWMutex   // used to protect the worker channel
-	wg       sync.WaitGroup // used to wait for all workers to complete their tasks
+	mu      sync.Mutex
+	staged  []Worker
+	started bool
+	closing bool
+	ctx     context.Context
+	wg      sync.WaitGroup
+	done    chan struct{}
+	close   sync.Once
 }
 
-// New creates a new instance of Pool.
 func New() *Pool {
-	return &Pool{
-		worker: make(chan Worker),
-	}
+	return &Pool{done: make(chan struct{})}
 }
 
-// Run starts the pool, allowing it to process incoming workers with the
-// provided context.
+// Run starts staged workers once and waits for Close to join all workers.
+// The owner must cancel workers before calling Close.
 func (m *Pool) Run(ctx context.Context) {
-	// Loop over the worker channel to receive and process each worker.
-	// The iteration over the worker channel will end when the channel
-	// is closed, which is handled by the Close method.
-	for w := range m.worker {
-		m.wg.Add(1)
-		go func() {
-			defer m.wg.Done()
-			w.Run(ctx)
-		}()
+	m.mu.Lock()
+	if !m.started && !m.closing {
+		m.started = true
+		m.ctx = ctx
+		for _, worker := range m.staged {
+			m.startLocked(worker)
+		}
+
+		m.staged = nil
 	}
+	m.mu.Unlock()
+
+	<-m.done
 }
 
-// Add adds a new worker to the pool for execution.
+// Add stages a worker before Run, starts it after Run, or ignores it after Close.
 func (m *Pool) Add(w Worker) {
-	// Acquire a read lock to safely check if the worker channel is open.
-	m.workerMu.RLock()
-	defer m.workerMu.RUnlock()
+	m.mu.Lock()
+	defer m.mu.Unlock()
 
-	// If the worker channel has not been closed and nilled out, send the worker
-	// to the channel.
-	if m.worker != nil {
-		m.worker <- w
+	if m.closing {
+		return
 	}
+
+	if !m.started {
+		m.staged = append(m.staged, w)
+		return
+	}
+
+	m.startLocked(w)
 }
 
-// Close safely closes the pool, ensuring all workers have completed their
-// tasks. It waits for all workers to finish their execution.
+func (m *Pool) startLocked(w Worker) {
+	// Admission closure uses the same mutex. Wait starts only after closure.
+	m.wg.Add(1)
+	go func() {
+		defer m.wg.Done()
+		w.Run(m.ctx)
+	}()
+}
+
+// Close closes admission and joins workers without holding their admission lock.
+// It does not cancel workers; that is the owner's responsibility.
 func (m *Pool) Close() {
-	// Acquire a write lock to safely close the channel.
-	m.workerMu.Lock()
-	defer m.workerMu.Unlock()
+	m.close.Do(func() {
+		m.mu.Lock()
+		m.closing = true
+		m.staged = nil
+		m.mu.Unlock()
 
-	// Ensure the worker channel is closed only once.
-	if m.worker != nil {
-		// Close the worker channel to interrupt worker runner execution.
-		close(m.worker)
-		// Set it to nil to indicate that the channel is closed.
-		m.worker = nil
-	}
+		m.wg.Wait()
+		close(m.done)
+	})
 
-	// Wait for all workers to finish their execution.
-	m.wg.Wait()
+	<-m.done
 }

@@ -13,10 +13,18 @@ import (
 // it updates the service state and notifies the balancer and announcer if
 // necessary.
 func (m *Service) HandleEvent(event *xevent.Event) {
-	// Increment the wait group counter for event processing.
-	// Service won't be stopped until the wait group counter is zero.
+	m.eventsMu.Lock()
+	if m.eventsClosed {
+		m.eventsMu.Unlock()
+		return
+	}
+
 	m.eventsWG.Add(1)
+	m.eventsMu.Unlock()
 	defer m.eventsWG.Done()
+
+	m.stateMu.Lock()
+	defer m.stateMu.Unlock()
 
 	// Process the event.
 	m.processEvent(event)
@@ -31,9 +39,6 @@ func (m *Service) HandleEvent(event *xevent.Event) {
 
 // processEvent processes an event received by the service.
 func (m *Service) processEvent(event *xevent.Event) {
-	m.stateMu.Lock()
-	defer m.stateMu.Unlock()
-
 	// Assign the service key to the event.
 	event.Service = m.key
 
