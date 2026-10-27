@@ -14,6 +14,7 @@ import (
 	"github.com/yanet-platform/monalive/internal/balancer/yanet"
 	"github.com/yanet-platform/monalive/internal/balancer/yanet2"
 	"github.com/yanet-platform/monalive/internal/core"
+	"github.com/yanet-platform/monalive/internal/management"
 	"github.com/yanet-platform/monalive/internal/monitoring/metrics"
 	"github.com/yanet-platform/monalive/internal/monitoring/metrics/prometheus"
 	"github.com/yanet-platform/monalive/internal/server"
@@ -29,7 +30,7 @@ type Monalive struct {
 	tunneler  *checktun.CheckTun
 
 	core        *core.Core
-	coreManager *core.Manager
+	coreManager *management.Manager
 
 	server *server.Server
 
@@ -92,7 +93,7 @@ func New(config Config, logger *log.Logger) (*Monalive, error) {
 
 	// Create the core service and its manager.
 	coreService := core.New(announcer, balancer, scopedMetrics, logger)
-	coreManager, err := core.NewManager(config.Service, coreService, scopedMetrics.Scope(metrics.Global), logger)
+	coreManager, err := management.NewManager(config.Service, coreService, scopedMetrics.Scope(metrics.Global), logger)
 	if err != nil {
 		return nil, err
 	}
