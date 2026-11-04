@@ -66,6 +66,11 @@ func (m *Service) processSucceed(event *xevent.Event) {
 // processFailure updates the service state when a failure event occurs. It
 // adjusts the total weight and decrements the count of active reals.
 func (m *Service) processFailure(event *xevent.Event) {
+	// A terminal event can arrive after the real has already been disabled.
+	if !event.Init.Enable {
+		return
+	}
+
 	// Disable events does not contains new weight. Weight of disabled real is
 	// stored in the event.Init status.
 	m.state.Weight -= event.Init.Weight
