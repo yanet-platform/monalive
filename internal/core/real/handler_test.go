@@ -652,8 +652,8 @@ func TestHandleEvent_Shutdown_Enabled(t *testing.T) {
 }
 
 // TestHandleEvent_Shutdown_Disabled tests the scenario where a Real instance is
-// shutdown while it is disabled. It verifies that no shutdown event is
-// generated when the instance is already disabled.
+// shutdown while it is disabled. It verifies that the shutdown event is
+// forwarded even when the instance is already disabled.
 func TestHandleEvent_Shutdown_Disabled(t *testing.T) {
 	handler := &testHandler{}
 	initWeight := weight.Weight(1)
@@ -664,9 +664,9 @@ func TestHandleEvent_Shutdown_Disabled(t *testing.T) {
 		check := shutdownEvent()
 		real.HandleEvent(check)
 
-		// Verify that no shutdown event was handled.
+		// Verify that the shutdown event was handled.
 		event := handler.Event()
-		require.Nil(t, event)
+		require.NotNil(t, event)
 	}
 }
 
@@ -719,5 +719,47 @@ func TestHandleEvent_Shutdown_Inhibited(t *testing.T) {
 		assert.Equal(t, xevent.Shutdown, event.Type)
 		assert.Equal(t, true, event.Init.Enable)
 		assert.Equal(t, weight.Weight(0), event.Init.Weight)
+	}
+}
+
+// Test_Real_ShutdownAfterInhibitionDisabledByReload verifies that shutdown reaches
+// the handler and clears inhibition after a sequential reload disables inhibition.
+func Test_Real_ShutdownAfterInhibitionDisabledByReload(t *testing.T) {
+	config := &Config{
+		RSKey:            keepalived.RSKey{IP: netip.MustParseAddr("127.0.0.1")},
+		InhibitOnFailure: true,
+		Weight:           1,
+	}
+	var received *xevent.Event
+	r := New(config, func(event *xevent.Event) { received = event }, log.NewNop())
+	r.HandleEvent(&xevent.Event{Type: xevent.Enable})
+	r.HandleEvent(&xevent.Event{Type: xevent.Disable})
+	require.True(t, r.State().Inhibited)
+	require.False(t, r.State().Alive)
+
+	updated := *config
+	updated.InhibitOnFailure = false
+	r.Reload(&updated)
+	received = nil
+	terminal := &xevent.Event{Type: xevent.Shutdown}
+	r.HandleEvent(terminal)
+
+	require.Same(t, terminal, received)
+	require.Equal(t, xevent.Shutdown, received.Type)
+	require.False(t, r.State().Inhibited)
+	require.False(t, r.State().Alive)
+}
+
+// Test_Real_ShutdownAlreadyDisabledReachesHandler verifies that shutdown reaches
+// the handler even for an already disabled real, including repeated shutdowns.
+func Test_Real_ShutdownAlreadyDisabledReachesHandler(t *testing.T) {
+	var received *xevent.Event
+	r := New(&Config{}, func(event *xevent.Event) { received = event }, log.NewNop())
+	for range 2 {
+		received = nil
+		terminal := &xevent.Event{Type: xevent.Shutdown}
+		r.HandleEvent(terminal)
+		require.Same(t, terminal, received)
+		require.Equal(t, xevent.Shutdown, received.Type)
 	}
 }

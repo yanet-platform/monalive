@@ -1,6 +1,7 @@
 package service
 
 import (
+	"net/netip"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -8,8 +9,10 @@ import (
 
 	"github.com/yanet-platform/monalive/internal/announcer"
 	"github.com/yanet-platform/monalive/internal/balancer"
+	"github.com/yanet-platform/monalive/internal/core/real"
 	"github.com/yanet-platform/monalive/internal/monitoring/metrics"
 	"github.com/yanet-platform/monalive/internal/types/xevent"
+	"github.com/yanet-platform/monalive/pkg/keepalived"
 	"github.com/yanet-platform/monalive/pkg/weight"
 )
 
@@ -69,9 +72,47 @@ func updateRealEventWithDynWeight(newWeight, oldWeight weight.Weight) *xevent.Ev
 func disableRealEvent(oldWeight weight.Weight) *xevent.Event {
 	event := enableRealEvent(oldWeight)
 	event.Type = xevent.Disable
+	event.Init.Enable = true
 	event.New.Enable = false
 	event.New.Weight = weight.Omitted
 	return event
+}
+
+// Test_Service_ShutdownDisabledRealPreservesAccounting verifies that shutdown of
+// an already disabled real does not remove another real's weight or alive count.
+func Test_Service_ShutdownDisabledRealPreservesAccounting(t *testing.T) {
+	service := defaultService()
+	a := real.New(&real.Config{
+		RSKey:  keepalived.RSKey{IP: netip.MustParseAddr("127.0.0.1")},
+		Weight: 3,
+	}, service.HandleEvent, log.NewNop())
+	b := real.New(&real.Config{
+		RSKey:  keepalived.RSKey{IP: netip.MustParseAddr("127.0.0.2")},
+		Weight: 5,
+	}, service.HandleEvent, log.NewNop())
+	a.HandleEvent(&xevent.Event{Type: xevent.Enable})
+	b.HandleEvent(&xevent.Event{Type: xevent.Enable})
+	a.HandleEvent(&xevent.Event{Type: xevent.Disable})
+
+	for range 2 {
+		a.HandleEvent(&xevent.Event{Type: xevent.Shutdown})
+		state := service.State()
+		assert.Equal(t, weight.Weight(5), state.Weight)
+		assert.Equal(t, 1, state.RealsAlive)
+		assert.True(t, state.Alive)
+	}
+}
+
+// Test_Service_ShutdownInhibitedRealRemovesAliveCount verifies that an inhibited
+// real's terminal event removes its enabled count without subtracting weight.
+func Test_Service_ShutdownInhibitedRealRemovesAliveCount(t *testing.T) {
+	service := defaultService()
+	service.HandleEvent(enableRealEvent(0))
+	terminal := disableRealEvent(0)
+	terminal.Type = xevent.Shutdown
+	service.HandleEvent(terminal)
+	assert.Equal(t, weight.Weight(0), service.State().Weight)
+	assert.Equal(t, 0, service.State().RealsAlive)
 }
 
 // TestHandleEvent_EnableDisabledReal verifies that enabling a previously

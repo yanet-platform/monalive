@@ -148,7 +148,12 @@ func (m *Real) enableReal() (changed bool) {
 // disableReal disables the real, updating its status and inhibition state if
 // applicable.
 func (m *Real) disableReal(eventType xevent.Type) (changed bool) {
-	// If the real is already disabled and can't be inhibited, do nothing.
+	isShutdown := eventType == xevent.Shutdown
+	inhibitionUnchanged := !m.config.InhibitOnFailure || m.state.Inhibited
+
+	// Suppress ordinary failures if the real is already disabled and its
+	// inhibition would not change. Always process shutdown to clear inhibition
+	// and forward the terminal event.
 	//
 	// NOTE: this might be a bit confusing why checking the InhibitOnFailure
 	// configuration parameter is necessary here. This is done to prevent the
@@ -159,14 +164,7 @@ func (m *Real) disableReal(eventType xevent.Type) (changed bool) {
 	//  3. If this real was disabled, after the reload it is expected that
 	//  the real will be enabled in balancer with weight equals 0. So if don't
 	//  check this parameter, the described transition will be lost.
-	if !m.state.Alive && !m.config.InhibitOnFailure {
-		return false
-	}
-
-	isShutdown := eventType == xevent.Shutdown
-
-	// If the real is already disabled and inhibited, do nothing.
-	if !m.state.Alive && m.state.Inhibited && !isShutdown {
+	if !isShutdown && !m.state.Alive && inhibitionUnchanged {
 		return false
 	}
 
