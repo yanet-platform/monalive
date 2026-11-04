@@ -53,7 +53,7 @@ func (m *Config) Key() Key {
 		connectIP:      m.ConnectIP,
 		connectPort:    m.ConnectPort,
 		bindIP:         m.BindIP,
-		connectTimeout: m.CheckTimeout,
+		connectTimeout: m.ConnectTimeout,
 		checkTimeout:   m.CheckTimeout,
 		fwMark:         m.FWMark,
 
