@@ -3,6 +3,7 @@ package real
 
 import (
 	"context"
+	"maps"
 	"slices"
 	"sync"
 	"time"
@@ -267,6 +268,7 @@ func (m *Real) reload(config *Config) {
 
 	// Map to store the new set of checkers after reloading.
 	newCheckers := make(map[checker.Key]*checker.Checker)
+	knownCheckers := make(map[checker.Key]*checker.Checker)
 	for _, cfg := range checkers {
 		select {
 		// Check if the service is shutting down. If so, abort the reload.
@@ -287,7 +289,7 @@ func (m *Real) reload(config *Config) {
 					// If the weight has changed, update it.
 					knownChecker.UpdateWeight(config.Weight)
 				}
-				newCheckers[key] = knownChecker
+				knownCheckers[key] = knownChecker
 				// Remove from the old checkers map.
 				delete(m.checkers, key)
 
@@ -305,8 +307,6 @@ func (m *Real) reload(config *Config) {
 					checker.SetResponceTimeMetric(m.metrics.RealResponseTime()),
 				)
 				newCheckers[key] = newChecker
-				// Add new checker to the pool.
-				m.checkersPool.Add(newChecker)
 			}
 		}
 	}
@@ -316,6 +316,13 @@ func (m *Real) reload(config *Config) {
 		// Gracefully stop each outdated checker.
 		checker.Stop()
 	}
+
+	// Start replacements only after all outdated checkers have stopped.
+	for _, checker := range newCheckers {
+		m.checkersPool.Add(checker)
+	}
+
+	maps.Copy(newCheckers, knownCheckers)
 
 	// Save the updated set of checkers.
 	m.checkersMu.Lock()
